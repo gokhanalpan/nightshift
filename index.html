@@ -23,6 +23,47 @@
       #hud-night { left: 22px; }
       #hud-time { right: 22px; font-variant-numeric: tabular-nums; }
       #crosshair { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(230, 225, 211, 0.6); }
+      #hud #hud-score { right: 22px; top: 42px; font-size: 13px; }
+      #hud #hud-tasks { left: 22px; top: 42px; font-size: 13px; }
+      #hud #hud-carry { left: 22px; top: 64px; font-size: 13px; color: var(--paper); }
+      #hud #hud-ping { left: 50%; top: 18px; transform: translateX(-50%); font-size: 14px; letter-spacing: 0.08em; color: #ffb347; }
+      #hud #hud-ping.urgent { animation: blink 1s steps(1) infinite; }
+      #hint { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); max-width: 520px; text-align: center; font-size: 15px; line-height: 1.4; color: var(--paper); text-shadow: 0 1px 2px #000; opacity: 0; transition: opacity 0.4s; }
+      #hint.show { opacity: 1; }
+      .overlay .note { max-width: 440px; margin-top: 10px; padding: 16px 20px; background: var(--paper); color: #222; font-size: 15px; line-height: 1.45; text-align: left; transform: rotate(-1deg); box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+      .overlay .note[hidden] { display: none; }
+      .overlay .note p { margin: 0 0 8px; color: #222; font-size: 15px; }
+      .overlay .note p:last-child { margin: 0; color: #555; }
+      #prompt { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); text-align: center; font-size: 15px; color: var(--paper); text-shadow: 0 1px 2px #000; }
+      #prompt[hidden] { display: none; }
+      #prompt .key { display: inline-block; min-width: 20px; padding: 1px 5px; margin-right: 6px; border: 1px solid var(--dim); border-radius: 3px; font-size: 12px; color: var(--dim); }
+      #progress { width: 120px; height: 3px; margin: 8px auto 0; background: rgba(230, 225, 211, 0.18); }
+      #progress-bar { height: 100%; width: 0; background: var(--paper); }
+      #notice { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); font-size: 14px; color: var(--paper); text-shadow: 0 1px 2px #000; opacity: 0; transition: opacity 0.3s; }
+      #notice.show { opacity: 1; }
+
+      /* Dread vignette, driven from the loop. */
+      #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s; box-shadow: inset 0 0 180px 60px rgba(0, 0, 0, 0.9); }
+
+      /* Camera mode: the feed fills the screen behind a scanline wash. */
+      #camview { position: fixed; inset: 0; pointer-events: none; }
+      #camview[hidden] { display: none; }
+      #camview::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.22) 2px 4px); mix-blend-mode: multiply; }
+      #camview::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 120px rgba(0,0,0,0.85); }
+      #cam-label { position: absolute; left: 26px; top: 20px; font-size: 18px; letter-spacing: 0.08em; color: #d8f0d8; text-shadow: 0 0 6px rgba(120,255,120,0.5); }
+      #cam-rec { position: absolute; right: 26px; top: 20px; font-size: 14px; color: #ff6a5a; }
+      #cam-rec::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; background: #ff3b2e; animation: blink 1.2s steps(1) infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+      #cam-hint { position: absolute; left: 26px; bottom: 20px; font-size: 13px; color: #9fbf9f; }
+      #cam-tabs { position: absolute; right: 26px; bottom: 20px; display: flex; gap: 10px; font-size: 13px; color: #6f8f6f; }
+      #cam-tabs span.on { color: #d8f0d8; }
+      #cam-tabs span.ping { color: #ffb347; }
+      /* A feed with something wrong in the store: heavier lines and a nervous picture. */
+      #camview.bad::before { background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.42) 2px 4px); animation: jitter 0.12s steps(2) infinite; }
+      @keyframes jitter { 50% { transform: translateY(2px); } }
+      #cam-flash { position: fixed; inset: 0; pointer-events: none; background: #e8f0e8; opacity: 0; }
+      #cam-flash.on { animation: flash 0.18s ease-out; }
+      @keyframes flash { 0% { opacity: 0.55; } 100% { opacity: 0; } }
 
       /* Overlays: start, pause, end of shift. */
       .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(5, 5, 7, 0.78); cursor: pointer; }
@@ -32,22 +73,68 @@
       .overlay .hint { margin-top: 26px; font-size: 13px; color: var(--dim); }
       .overlay button { margin-top: 18px; font: inherit; font-size: 15px; padding: 10px 22px; border: 1px solid var(--dim); border-radius: 4px; background: transparent; color: var(--ink); cursor: pointer; }
       .overlay button:hover, .overlay button:focus-visible { border-color: var(--paper); color: var(--paper); outline: none; }
+      /* The rules note, read up close. */
+      #overlay-note { background: rgba(5, 5, 7, 0.6); }
+      #note-paper { width: 420px; max-width: 90vw; padding: 26px 30px; background: #f3eee0; color: #222; font-size: 17px; line-height: 1.55; transform: rotate(-1.2deg); box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+      #note-paper h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: 0.18em; color: #444; }
+      #note-paper ol { margin: 0; padding-left: 22px; }
+      #note-paper li { margin: 4px 0; }
+      #note-paper li.crossed { text-decoration: line-through; text-decoration-thickness: 2px; color: #777; }
+      #note-paper li.last { margin-top: 12px; font-weight: 700; }
+      #note-paper .blank { height: 160px; }
+      #note-paper .sig { margin-top: 14px; font-size: 14px; color: #666; }
+      #overlay-note p.hint { color: var(--dim); }
+
+      /* Endings. */
+      #overlay-end.bad { background: #000; }
+      #overlay-end.bad h1 { color: #b4322a; letter-spacing: 0.2em; }
+      #overlay-end.good { background: rgba(240, 220, 190, 0.18); }
+      #overlay-end.secret { background: #000; }
+      #overlay-end.secret h1 { font-weight: 300; color: #777; }
+      #overlay-end #end-rules { color: var(--dim); font-size: 14px; }
+
+      #err { position: fixed; left: 12px; right: 12px; bottom: 36px; padding: 10px 12px; background: #5a1a1a; color: #ffd9d9; font: 13px/1.4 monospace; white-space: pre-wrap; z-index: 20; }
+      #err[hidden] { display: none; }
       #fps { position: fixed; left: 22px; bottom: 16px; font-size: 12px; color: #4a4740; pointer-events: none; }
     </style>
   </head>
   <body>
     <div id="app"></div>
 
+    <div id="vignette"></div>
     <div id="hud">
       <div id="hud-night" class="corner">Night 1</div>
       <div id="hud-time" class="corner">23:00</div>
+      <div id="hud-score" class="corner"></div>
+      <div id="hud-tasks" class="corner"></div>
+      <div id="hud-carry" class="corner"></div>
+      <div id="hud-ping" class="corner"></div>
       <div id="crosshair"></div>
+      <div id="prompt" hidden>
+        <span class="key">E</span><span id="prompt-text"></span>
+        <div id="progress"><div id="progress-bar"></div></div>
+      </div>
+      <div id="notice"></div>
+      <div id="hint"></div>
+    </div>
+
+    <div id="cam-flash"></div>
+    <div id="camview" hidden>
+      <div id="cam-label"></div>
+      <div id="cam-rec">REC</div>
+      <div id="cam-tabs"></div>
+      <div id="cam-hint">1–4 switch feed · E back to the till</div>
     </div>
 
     <div id="overlay-start" class="overlay">
       <h1 id="start-title">Night 1</h1>
-      <p>Click to start your shift</p>
-      <p class="hint">Walk with WASD, look with the mouse. Esc pauses.</p>
+      <p id="start-sub">Click to start your shift</p>
+      <div id="start-note" class="note" hidden>
+        <p>Welcome to the night shift. Keep the shelves full (stock is in the back room), serve whoever comes to the till, mop up anything spilled, and check the camera monitor when it beeps.</p>
+        <p>The door unlocks at 06:00. Don't leave before then. — Mgmt</p>
+      </div>
+      <p class="hint">Walk with WASD, look with the mouse, hold E to do things, G to greet, Q to put a box down. Esc pauses.</p>
+      <button id="btn-new" type="button" hidden>Start over from night 1</button>
     </div>
 
     <div id="overlay-pause" class="overlay" hidden>
@@ -55,13 +142,25 @@
       <p>Click to go back to the till</p>
     </div>
 
+    <div id="overlay-note" class="overlay" hidden>
+      <div id="note-paper">
+        <h2>NIGHT STAFF</h2>
+        <ol id="note-lines"></ol>
+        <div class="sig">— Mgmt</div>
+      </div>
+      <p class="hint">E to put it back</p>
+    </div>
+
     <div id="overlay-end" class="overlay" hidden>
-      <h1>06:00</h1>
-      <p>Shift over. The door is unlocked.</p>
+      <h1 id="end-title">06:00</h1>
+      <p id="end-line">Shift over. The door is unlocked.</p>
+      <p id="end-score"></p>
+      <p id="end-rules"></p>
       <button id="btn-next" type="button">Next night</button>
     </div>
 
     <div id="fps"></div>
+    <div id="err" hidden></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

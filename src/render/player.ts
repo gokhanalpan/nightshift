@@ -18,6 +18,8 @@ export class PlayerController {
   locked = false;
   /** Set to false to freeze movement (menus, endings). Looking still works. */
   canMove = true;
+  /** Set to false to freeze mouse look too (camera mode). */
+  canLook = true;
 
   private readonly keys = new Set<string>();
   private readonly colliders: Collider[];
@@ -47,6 +49,11 @@ export class PlayerController {
       if (!this.locked) this.keys.clear();
       for (const cb of this.onLockChange) cb();
     });
+  }
+
+  /** Whether a key is currently held (by KeyboardEvent.code). */
+  isDown(code: string): boolean {
+    return this.keys.has(code);
   }
 
   requestLock(): void {
@@ -80,7 +87,7 @@ export class PlayerController {
   }
 
   private onMouseMove(e: MouseEvent): void {
-    if (!this.locked) return;
+    if (!this.locked || !this.canLook) return;
     this.yaw -= e.movementX * P.mouseSensitivity;
     this.pitch -= e.movementY * P.mouseSensitivity;
     this.pitch = Math.max(-P.maxPitch, Math.min(P.maxPitch, this.pitch));

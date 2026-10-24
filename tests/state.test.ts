@@ -9,14 +9,14 @@ import {
   isNightOver,
   nightProgress,
   startNight,
-  tick,
+  tickClock,
 } from "@/game/state";
 
 describe("night clock", () => {
   it("starts at 23:00 and waits until the night is started", () => {
     const s = createState(1);
     expect(clockString(s)).toBe("23:00");
-    tick(s, 100);
+    tickClock(s, 100);
     expect(s.elapsed).toBe(0);
     expect(clockString(s)).toBe("23:00");
   });
@@ -24,10 +24,10 @@ describe("night clock", () => {
   it("runs 23:00 → 06:00 over the real length of a night", () => {
     const s = createState(1);
     startNight(s);
-    tick(s, TUNING.night.realSeconds / 2);
+    tickClock(s, TUNING.night.realSeconds / 2);
     expect(nightProgress(s)).toBeCloseTo(0.5);
     expect(clockString(s)).toBe("02:30");
-    tick(s, TUNING.night.realSeconds / 2);
+    tickClock(s, TUNING.night.realSeconds / 2);
     expect(clockString(s)).toBe("06:00");
     expect(isNightOver(s)).toBe(true);
   });
@@ -35,10 +35,10 @@ describe("night clock", () => {
   it("never runs past 06:00", () => {
     const s = createState(3);
     startNight(s);
-    tick(s, TUNING.night.realSeconds * 5);
+    tickClock(s, TUNING.night.realSeconds * 5);
     expect(s.elapsed).toBe(TUNING.night.realSeconds);
     expect(clockMinutes(s)).toBe(TUNING.night.clockEnd);
-    tick(s, 10);
+    tickClock(s, 10);
     expect(clockString(s)).toBe("06:00");
   });
 

@@ -11,6 +11,16 @@ export interface StoreHandles {
   fridgeLight: THREE.PointLight;
   streetlight: THREE.SpotLight;
   backRoomBulb: THREE.PointLight;
+  /** The four feed quadrants on the counter monitor, in feed order. */
+  monitorFeeds: THREE.Mesh[];
+  /** The front glass door; swings when a customer passes. */
+  frontDoor: THREE.Group;
+  /** "NIGHT 6" on the wall behind the till; shown only in the endless night. */
+  night6Sign: THREE.Mesh;
+  /** The manager key on a crate in the back room; hidden until night 5. */
+  managerKey: THREE.Mesh;
+  /** The phone's handset, for a little rattle while it rings. */
+  phoneHandset: THREE.Mesh;
   /** The thin glow under the MANAGER door; off until night 4. */
   managerDoorGlow: THREE.Mesh;
   /** Where the wall clock mesh should hang: above the front door, facing into the store. */
@@ -29,13 +39,19 @@ export function buildStore(): StoreHandles {
   buildFloorAndCeiling(group);
   const panels = buildCeilingLights(group);
   buildSideAndBackWalls(group, colliders);
-  buildFrontWall(group, colliders);
-  buildCounter(group, colliders);
+  const frontDoor = buildFrontWall(group, colliders);
+  const monitorFeeds: THREE.Mesh[] = [];
+  const phoneHandset = buildCounter(group, colliders, monitorFeeds);
   buildShelves(group, colliders);
   const fridgeLight = buildFridges(group, colliders);
   const managerDoorGlow = buildRightWallDoors(group, colliders);
-  const backRoomBulb = buildBackRoom(group, colliders);
+  const { bulb: backRoomBulb, key: managerKey } = buildBackRoom(group, colliders);
   const streetlight = buildLot(group);
+  const night6Sign = textPlane("NIGHT 6", { width: 1.6, height: 0.5, bg: "#c9c3b0", fg: "#2a1a1a", font: "bold 110px sans-serif" });
+  night6Sign.position.set(-HALF_W + 0.01, 2.0, -1.2);
+  night6Sign.rotation.y = Math.PI / 2;
+  night6Sign.visible = false;
+  group.add(night6Sign);
 
   return {
     group,
@@ -45,6 +61,11 @@ export function buildStore(): StoreHandles {
     fridgeLight,
     streetlight,
     backRoomBulb,
+    monitorFeeds,
+    frontDoor,
+    managerKey,
+    phoneHandset,
+    night6Sign,
     managerDoorGlow,
     clockAnchor: new THREE.Vector3(0, 2.72, -HALF_D + T / 2 + 0.03),
   };
@@ -124,7 +145,7 @@ function buildSideAndBackWalls(g: THREE.Group, c: Collider[]): void {
   box(g, [S.width, 0.1, 0.04], [0, 0.05, HALF_D - 0.02], skirt);
 }
 
-function buildFrontWall(g: THREE.Group, c: Collider[]): void {
+function buildFrontWall(g: THREE.Group, c: Collider[]): THREE.Group {
   const wall = lambert(PALETTE.wall);
   const frame = lambert(PALETTE.doorFrame);
   const z = -HALF_D - T / 2;
@@ -157,30 +178,35 @@ function buildFrontWall(g: THREE.Group, c: Collider[]): void {
   }
 
   // The glass door: frame, pane, push bar. Locked for now (it is a collider).
-  const door = new THREE.Group();
-  door.position.set(0, 0, z);
   const dw = f.doorWidth;
   const dh = f.doorHeight;
-  box(door, [0.08, dh, T + 0.02], [-dw / 2 + 0.04, dh / 2, 0], frame);
-  box(door, [0.08, dh, T + 0.02], [dw / 2 - 0.04, dh / 2, 0], frame);
-  box(door, [dw, 0.08, T + 0.02], [0, dh - 0.04, 0], frame);
-  box(door, [dw, 0.1, T + 0.02], [0, 0.05, 0], frame);
+  // Hinge group sits at the door's left jamb; the leaf is offset so rotating the group swings it.
+  const door = new THREE.Group();
+  door.position.set(-dw / 2, 0, z);
+  const leaf = new THREE.Group();
+  leaf.position.x = dw / 2;
+  box(leaf, [0.08, dh, T + 0.02], [-dw / 2 + 0.04, dh / 2, 0], frame);
+  box(leaf, [0.08, dh, T + 0.02], [dw / 2 - 0.04, dh / 2, 0], frame);
+  box(leaf, [dw, 0.08, T + 0.02], [0, dh - 0.04, 0], frame);
+  box(leaf, [dw, 0.1, T + 0.02], [0, 0.05, 0], frame);
   const pane = new THREE.Mesh(new THREE.PlaneGeometry(dw - 0.16, dh - 0.18), glass);
   pane.position.set(0, dh / 2, 0);
-  door.add(pane);
-  box(door, [dw - 0.3, 0.04, 0.04], [0, 1.0, T / 2 + 0.03], lambert(PALETTE.shelfMetal));
-  // header between the door top and the glass line
-  box(door, [dw, f.glassTop - dh, T], [0, dh + (f.glassTop - dh) / 2, 0], wall);
+  leaf.add(pane);
+  box(leaf, [dw - 0.3, 0.04, 0.04], [0, 1.0, T / 2 + 0.03], lambert(PALETTE.shelfMetal));
+  door.add(leaf);
   g.add(door);
+  // header between the door top and the glass line (fixed, not part of the leaf)
+  box(g, [dw, f.glassTop - dh, T], [0, dh + (f.glassTop - dh) / 2, z], wall);
   c.push({ minX: -dw / 2, maxX: dw / 2, minZ: z - T / 2, maxZ: z + T / 2 });
 
   // "OPEN 24h" sign hanging inside the right window.
   const sign = textPlane("OPEN 24h", { width: 0.9, height: 0.3, bg: "#1a1a1a", fg: "#ff5a3c" });
   sign.position.set(3.2, 2.1, z + T / 2 + 0.02);
   g.add(sign);
+  return door;
 }
 
-function buildCounter(g: THREE.Group, c: Collider[]): void {
+function buildCounter(g: THREE.Group, c: Collider[], monitorFeeds: THREE.Mesh[]): THREE.Mesh {
   const k = S.counter;
   // Body and top.
   box(g, [k.width, k.height - 0.05, k.depth], [k.x, (k.height - 0.05) / 2, k.z], lambert(PALETTE.counter), c);
@@ -193,8 +219,8 @@ function buildCounter(g: THREE.Group, c: Collider[]): void {
   box(g, [0.45, 0.18, 0.4], [tillX, k.height + 0.09, k.z], lambert(PALETTE.trim));
   box(g, [0.3, 0.1, 0.02], [tillX, k.height + 0.26, k.z - 0.1], lambert(0x9fd6a8, { emissive: 0x9fd6a8, emissiveIntensity: 0.6 }));
 
-  // Camera monitor: a chunky CRT with four dim feed quadrants. Feeds come alive in step 2+.
-  const monX = k.x - 0.8;
+  // Camera monitor: a chunky CRT with four dim feed quadrants. A quadrant brightens when it pings.
+  const monX = TUNING.interact.points.monitor.x;
   box(g, [0.55, 0.45, 0.45], [monX, k.height + 0.225, k.z + 0.05], lambert(0x3a3c3f));
   const feedColors = [0x1e3a2a, 0x1e2f3a, 0x2a2a1e, 0x2a1e2a];
   let i = 0;
@@ -202,11 +228,12 @@ function buildCounter(g: THREE.Group, c: Collider[]): void {
     for (const qx of [-1, 1]) {
       const feed = new THREE.Mesh(
         new THREE.PlaneGeometry(0.2, 0.15),
-        lambert(feedColors[i]!, { emissive: feedColors[i]!, emissiveIntensity: 2.2 }),
+        new THREE.MeshLambertMaterial({ color: feedColors[i], emissive: feedColors[i], emissiveIntensity: 2.2 }),
       );
       feed.position.set(monX + qx * 0.11, k.height + 0.225 + qy * 0.085, k.z - 0.18);
       feed.rotation.y = Math.PI;
       g.add(feed);
+      monitorFeeds.push(feed);
       i++;
     }
   }
@@ -221,8 +248,20 @@ function buildCounter(g: THREE.Group, c: Collider[]): void {
     pixelsPerMetre: 400,
   });
   note.rotation.x = -Math.PI / 2;
-  note.position.set(tillX + 0.45, k.height + 0.001, k.z + 0.1);
+  const np = TUNING.props.note;
+  note.position.set(np.x, k.height + 0.001, np.z);
   g.add(note);
+
+  // The phone: a beige desk phone with a handset on top.
+  const pp = TUNING.props.phone;
+  box(g, [0.22, 0.07, 0.18], [pp.x, k.height + 0.035, pp.z], lambert(0xcdc5b0));
+  const handset = box(g, [0.2, 0.04, 0.06], [pp.x, k.height + 0.09, pp.z - 0.05], lambert(0xb9b09a));
+  for (let i = 0; i < 6; i++) {
+    box(g, [0.02, 0.01, 0.02], [pp.x - 0.03 + (i % 3) * 0.03, k.height + 0.075, pp.z + 0.02 + Math.floor(i / 3) * 0.03], lambert(0x3a3a3a), undefined, {
+      castShadow: false,
+    });
+  }
+  return handset;
 }
 
 function buildShelves(g: THREE.Group, c: Collider[]): void {
@@ -231,33 +270,14 @@ function buildShelves(g: THREE.Group, c: Collider[]): void {
   const zc = (sh.zStart + sh.zEnd) / 2;
   const metal = lambert(PALETTE.shelfMetal);
   const board = lambert(PALETTE.shelfBoard);
-  let colorIdx = 0;
-
   for (const x of sh.rowX) {
     // Central spine and base plinth; the whole row is one collider.
     box(g, [0.1, sh.height, length], [x, sh.height / 2, zc], metal);
     box(g, [sh.width, 0.12, length], [x, 0.06, zc], metal, c);
-    // Shelf boards on both faces, with blocky products on each.
+    // Shelf boards on both faces. Products are drawn by products.ts from the slot layout.
     for (let lvl = 0; lvl < sh.levels; lvl++) {
       const y = 0.4 + lvl * ((sh.height - 0.5) / (sh.levels - 1));
       box(g, [sh.width, 0.04, length], [x, y, zc], board);
-      for (const side of [-1, 1]) {
-        const faceX = x + side * (sh.width / 4 + 0.02);
-        let z = sh.zStart + 0.15;
-        while (z < sh.zEnd - 0.15) {
-          const w = 0.14 + ((colorIdx * 7) % 3) * 0.05;
-          const h = 0.16 + ((colorIdx * 5) % 4) * 0.05;
-          const color = PALETTE.products[colorIdx % PALETTE.products.length]!;
-          // leave the odd gap — empty slots are what restocking fills later
-          if (colorIdx % 9 !== 4) {
-            box(g, [sh.width / 2 - 0.12, h, w], [faceX, y + 0.02 + h / 2, z + w / 2], lambert(color), undefined, {
-              castShadow: false,
-            });
-          }
-          z += w + 0.05;
-          colorIdx++;
-        }
-      }
     }
     // End caps.
     for (const ez of [sh.zStart, sh.zEnd]) {
@@ -363,7 +383,7 @@ function buildRightWallDoors(g: THREE.Group, c: Collider[]): THREE.Mesh {
   return glow;
 }
 
-function buildBackRoom(g: THREE.Group, c: Collider[]): THREE.PointLight {
+function buildBackRoom(g: THREE.Group, c: Collider[]): { bulb: THREE.PointLight; key: THREE.Mesh } {
   const b = S.backRoom;
   const x0 = HALF_W + T; // inner face of the right wall, from the back room's side
   const cx = x0 + b.width / 2;
@@ -387,12 +407,13 @@ function buildBackRoom(g: THREE.Group, c: Collider[]): THREE.PointLight {
 
   // Stock boxes in a couple of stacks, and a pallet.
   const boxMat = lambert(PALETTE.box);
+  const pile = TUNING.interact.points.stockPile;
   const stacks: Array<[number, number, number]> = [
-    [x0 + 0.6, cz + 1.4, 3],
+    [pile.x, pile.z, 3],
     [x0 + 1.3, cz + 1.4, 2],
     [x0 + 0.6, cz + 0.7, 1],
     [x0 + 3.2, cz - 1.3, 2],
-    [x0 + 2.5, cz - 1.4, 1],
+    [TUNING.props.managerKey.x, TUNING.props.managerKey.z, 2],
   ];
   for (const [sx, sz, n] of stacks) {
     for (let i = 0; i < n; i++) {
@@ -400,8 +421,14 @@ function buildBackRoom(g: THREE.Group, c: Collider[]): THREE.PointLight {
     }
   }
   // Fuse box on the far wall, with a little red standby lamp.
-  box(g, [0.1, 0.6, 0.4], [x0 + b.width - 0.05, 1.5, cz - 0.6], lambert(PALETTE.fuseBox));
-  box(g, [0.02, 0.04, 0.04], [x0 + b.width - 0.11, 1.72, cz - 0.45], lambert(0xff3030, { emissive: 0xff3030, emissiveIntensity: 2 }));
+  const fb = TUNING.props.fuseBox;
+  box(g, [0.1, 0.6, 0.4], [fb.x - 0.05, fb.y, fb.z], lambert(PALETTE.fuseBox));
+  box(g, [0.02, 0.04, 0.04], [fb.x - 0.11, fb.y + 0.22, fb.z + 0.15], lambert(0xff3030, { emissive: 0xff3030, emissiveIntensity: 2 }));
+  // The manager key, on a crate. Hidden until the night it matters.
+  const kp = TUNING.props.managerKey;
+  const key = box(g, [0.03, 0.01, 0.1], [kp.x, kp.y, kp.z], lambert(0xd8b65a, { emissive: 0xd8b65a, emissiveIntensity: 0.3 }), undefined, { castShadow: false });
+  box(key, [0.05, 0.01, 0.04], [0, 0, -0.06], lambert(0xd8b65a));
+  key.visible = false;
   // Mop and bucket by the door.
   box(g, [0.32, 0.3, 0.32], [x0 + 0.5, 0.15, cz - 1.5], lambert(0xd9c93a));
   box(g, [0.03, 1.4, 0.03], [x0 + 0.42, 0.85, cz - 1.42], lambert(0xc9b69a));
@@ -413,7 +440,7 @@ function buildBackRoom(g: THREE.Group, c: Collider[]): THREE.PointLight {
   box(g, [0.1, 0.1, 0.1], [cx, S.height - 0.25, cz], lambert(0xfff1c8, { emissive: 0xfff1c8, emissiveIntensity: 1.5 }), undefined, {
     castShadow: false,
   });
-  return bulb;
+  return { bulb, key };
 }
 
 function buildLot(g: THREE.Group): THREE.SpotLight {
@@ -486,6 +513,10 @@ function buildLot(g: THREE.Group): THREE.SpotLight {
   box(g, [0.08, 0.5, 0.08], [b.x - 1.1, 0.25, b.z - 0.5], post);
   box(g, [0.08, 0.5, 0.08], [b.x + 1.1, 0.25, b.z - 0.5], post);
   box(g, [0.1, 2.6, 0.1], [b.x + 2.4, 1.3, b.z], post);
+  const shelterLamp = new THREE.PointLight(0xcfe3ff, 6, 7, 2);
+  shelterLamp.position.set(b.x, 2.3, b.z);
+  g.add(shelterLamp);
+  box(g, [0.6, 0.05, 0.2], [b.x, 2.38, b.z], lambert(0xdfeeff, { emissive: 0xdfeeff, emissiveIntensity: 1.2 }), undefined, { castShadow: false });
   const stopSign = textPlane("BUS", { width: 0.4, height: 0.4, bg: "#2b4a7a", fg: "#ffffff", font: "bold 60px sans-serif" });
   stopSign.position.set(b.x + 2.4, 2.3, b.z + 0.06);
   g.add(stopSign);

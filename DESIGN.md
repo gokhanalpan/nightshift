@@ -72,8 +72,10 @@ Night 5 — Everything, faster. The last rule reads "There is no night 6." Aroun
 
 ## Endings
 
+A rule only counts once it is on the note. Rules broken on nights 1–4 are strikes: the morning still comes, the score drops, and the figure starts one stage closer the next time it appears. Three strikes over the week, or any rule broken on night 5, and there is no morning.
+
 - Good — rules followed, score high: door unlocks at 06:00, sunrise, credits. Last camera frame shows someone sitting at the till.
-- Bad — rules broken: the door won't unlock, lights go out, the clock resets to 23:00 and the wall shows NIGHT 6. The rules note is blank. No death screen, no retry; the player can quit from here.
+- Bad — three strikes, or a rule broken on night 5: the door won't unlock, lights go out, the clock resets to 23:00 and the wall shows NIGHT 6. The rules note is blank. No death screen, no retry; the player can quit from here.
 - Secret — manager door opened on night 5: short, ambiguous. Decide later.
 
 ## Anomaly system

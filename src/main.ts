@@ -9,6 +9,7 @@ import { clearSave, finishNight, loadSave, snapshotNight, writeSave } from "@/ga
 import { clockMinutes, clockString, createState, isNightOver, startNight, type GameState } from "@/game/state";
 import { GameAudio, distanceGain } from "@/render/audio";
 import { SecurityCameras } from "@/render/cameras";
+import { Creature } from "@/render/creature";
 import { Customers } from "@/render/customers";
 import { Figure } from "@/render/figure";
 import { HandBox } from "@/render/handBox";
@@ -81,6 +82,8 @@ const figureOutside = new Figure();
 scene.add(figureOutside.group);
 const figureInside = new Figure();
 scene.add(figureInside.group);
+const creature = new Creature();
+scene.add(creature.group);
 
 const player = new PlayerController(camera, renderer.domElement, store.colliders);
 
@@ -148,6 +151,8 @@ function restart(search: string): void {
 
 overlayStart.addEventListener("click", () => {
   audio.unlock();
+  void audio.loadClip("laugh1", `${import.meta.env.BASE_URL}sfx/laugh1.mp3`);
+  void audio.loadClip("laugh2", `${import.meta.env.BASE_URL}sfx/laugh2.mp3`);
   player.requestLock();
 });
 overlayPause.addEventListener("click", () => {
@@ -235,16 +240,27 @@ function showEnd(): void {
   const st = state.stats;
   const score = `Manager score ${Math.round(state.score)} — served ${st.served}, restocked ${st.restocked}, mopped ${st.mopped}, cameras ${st.pingsAnswered}/${st.pingsAnswered + st.pingsMissed}`;
   const total = state.strikes + state.rulesBroken.length;
-  const rules =
-    state.rulesBroken.length === 0
-      ? total === 0
-        ? "No rules broken."
-        : `No rules broken tonight. ${total} this week.`
-      : `Rules broken: ${[...state.rulesBroken].sort().join(", ")}. That's ${total} this week.`;
   const title = el("end-title");
   const line = el("end-line");
   el("end-score").textContent = score;
-  el("end-rules").textContent = rules;
+  // Each broken rule, spelled out, so the player knows what to do differently.
+  const rulesEl = el("end-rules");
+  const broken = [...state.rulesBroken].sort();
+  if (broken.length === 0) {
+    rulesEl.textContent = total === 0 ? "No rules broken." : `No rules broken tonight. ${total} this week so far.`;
+  } else {
+    const head = document.createElement("div");
+    head.textContent = `Rules broken tonight (${total} this week):`;
+    const list = document.createElement("ul");
+    for (const r of broken) {
+      const li = document.createElement("li");
+      li.textContent = `${r}. ${TUNING.rules.lines[r - 1]}`;
+      list.append(li);
+    }
+    const tail = document.createElement("div");
+    tail.textContent = state.night < TUNING.night.count && state.ending !== "bad" ? "It's closer now." : "";
+    rulesEl.replaceChildren(head, list, tail);
+  }
 
   if (state.ending === "bad") {
     overlayEnd.classList.add("bad");
@@ -255,7 +271,7 @@ function showEnd(): void {
     window.setTimeout(() => {
       title.textContent = "NIGHT 6";
       line.textContent = "The clock reads 23:00.";
-      btnNext.textContent = "Stay";
+      btnNext.textContent = "Go in";
       btnNext.hidden = false;
     }, 3500);
   } else if (state.ending === "secret") {
@@ -316,7 +332,7 @@ function ceilingLevel(now: number, dt: number): number {
   let level = L.nightDim[state.night] ?? 0.6;
   if (clockMinutes(state) >= clockToMinutes(L.lateFrom)) level *= L.lateDim;
   // Three seconds of warning before a blackout.
-  const minutesPerSecond = (TUNING.night.clockEnd - TUNING.night.clockStart) / TUNING.night.realSeconds;
+  const minutesPerSecond = (TUNING.night.clockEnd - TUNING.night.clockStart) / state.length;
   const nowMin = clockMinutes(state);
   const blackoutSoon = ANOMALIES.some(
     (a) => a.night === state.night && a.tell.kind === "lightsOut" && !state.anomaliesFired.includes(a.id) && clockToMinutes(a.at) - nowMin <= L.preBlackoutFlicker * minutesPerSecond,
@@ -346,7 +362,7 @@ function ceilingLevel(now: number, dt: number): number {
 function dreadLevel(): number {
   let d = 0;
   if (state.figure) d = Math.max(d, TUNING.figure.dread[state.figure.stage] ?? 0.3);
-  if (state.customers.some((c) => c.wrong && c.phase !== "gone")) d = Math.max(d, 0.3);
+  if (state.peeker) d = Math.max(d, TUNING.peeker.dread);
   if (state.backRoomFigure !== null) d = Math.max(d, 0.9);
   if (state.lights.out) d = Math.max(d, 0.45);
   if (state.endless) d = Math.max(d, 0.5);
@@ -376,8 +392,10 @@ let wasKnocked = state.knocked;
 let phoneWasAnswered = false;
 let figureWasAtWindow = false;
 let backRoomFigureWasThere = false;
-let tillArrivalWas: number | null = null;
 let feedWas: number | null = null;
+let laughTimer = 999;
+let peekerWasHiding = false;
+const hourChimed = new Set<string>();
 const stepAccum = new Map<number, { x: number; z: number; acc: number }>();
 
 function frame(now: number): void {
@@ -397,6 +415,8 @@ function step(now: number): void {
   last = now;
   const simDt = dt * debug.timeScale;
 
+  // The sim knows where the player is, so it can put things in the corner of their eye.
+  state.player = { x: player.position.x, z: player.position.z, yaw: player.yaw };
   // Game state advances only while the player is in the store (pointer locked).
   if (player.locked && !state.reading) tick(state, simDt);
   if (player.locked) checkBackRoomRule(state, player.position.x);
@@ -438,9 +458,22 @@ function step(now: number): void {
   syncDoor();
   syncMonitor(now / 1000);
   syncFigures(now / 1000);
+  creature.sync(state, now / 1000);
   if (lightsOn === state.lights.out) {
-    if (state.lights.out) audio.thunk();
+    if (state.lights.out) {
+      audio.thunk();
+      // Somewhere in the dark, a child laughing. Once now, once more a few seconds in.
+      window.setTimeout(() => audio.playClip(["laugh1", "laugh2"], 0.6), 1800);
+      laughTimer = 6 + Math.random() * 10;
+    }
     applyLights(!state.lights.out);
+  }
+  if (state.lights.out && player.locked && !state.endless) {
+    laughTimer -= dt;
+    if (laughTimer <= 0) {
+      audio.playClip(["laugh1", "laugh2"], 0.35);
+      laughTimer = 999; // just the once more per blackout
+    }
   }
   setCeiling(ceilingLevel(now, dt));
   const dread = dreadLevel();
@@ -550,12 +583,25 @@ function syncDoor(): void {
 
 /** The pinged quadrant on the counter monitor pulses until it is checked. */
 function syncMonitor(time: number): void {
+  const snowy = state.customers.some((c) => !c.onCamera && c.phase !== "gone");
   store.monitorFeeds.forEach((mesh, i) => {
     const m = mesh.material as THREE.MeshLambertMaterial;
     const pinged = state.ping?.feed === i;
-    m.emissiveIntensity = pinged ? 3 + Math.sin(time * 8) * 2.5 : 2.2;
+    if (snowy) {
+      // Static: the quadrants flash grey at random, the picture isn't holding.
+      const n = Math.random();
+      m.emissiveIntensity = n < 0.3 ? 6 + Math.random() * 6 : 0.6;
+      m.emissive.setScalar(n < 0.3 ? 0.6 : 0.15);
+      mesh.position.x += (Math.random() - 0.5) * 0.004;
+    } else {
+      m.emissive.set(FEED_COLORS[i]!);
+      m.emissiveIntensity = pinged ? 3 + Math.sin(time * 8) * 2.5 : 2.2;
+      mesh.position.x = FEED_X[i]!;
+    }
   });
 }
+const FEED_COLORS = [0x1e3a2a, 0x1e2f3a, 0x2a2a1e, 0x2a1e2a];
+const FEED_X = store.monitorFeeds.map((m) => m.position.x);
 
 function syncFigures(time: number): void {
   const F = TUNING.figure;
@@ -629,6 +675,19 @@ function syncSounds(dt: number): void {
   if (state.knocked && !wasKnocked) audio.knock(distanceGain(player.position.distanceTo(new THREE.Vector3(6.5, 1, 3))));
   wasKnocked = state.knocked;
 
+  // The wall clock marks the hours the note cares about.
+  if (player.locked && !state.endless) {
+    const nowMin = clockMinutes(state);
+    for (const hhmm of [TUNING.rules.lockAt, TUNING.rules.unlockAt]) {
+      const key = `${state.night}-${hhmm}`;
+      if (nowMin >= clockToMinutes(hhmm) && nowMin < clockToMinutes(hhmm) + 1 && !hourChimed.has(key)) {
+        hourChimed.add(key);
+        audio.chime(0.5);
+        state.notice = { text: hhmm, at: state.elapsed };
+      }
+    }
+  }
+
   // Stingers: the figure reaching the window, something in the back room, someone suddenly at the till.
   const atWindow = state.figure?.stage === "window";
   if (atWindow && !figureWasAtWindow) audio.stinger(1);
@@ -636,9 +695,9 @@ function syncSounds(dt: number): void {
   const backRoom = state.backRoomFigure !== null;
   if (backRoom && !backRoomFigureWasThere) audio.stinger(0.9);
   backRoomFigureWasThere = backRoom;
-  const silentAtTill = state.customers.find((c) => c.silent && c.phase === "queued" && c.queueIndex === 0)?.id ?? null;
-  if (silentAtTill !== null && silentAtTill !== tillArrivalWas) audio.stinger(0.7);
-  tillArrivalWas = silentAtTill;
+  const hiding = state.peeker?.phase === "hiding";
+  if (hiding && !peekerWasHiding) audio.stinger(0.8);
+  peekerWasHiding = hiding;
 
   // Feed switches: static and a flash.
   if (state.viewingFeed !== feedWas) {

@@ -1,5 +1,5 @@
-import { TUNING, type RegularId } from "@/config/tuning";
-import type { FigureStage } from "@/config/anomalies";
+import { TUNING, nightSeconds, type RegularId } from "@/config/tuning";
+import { ANOMALIES, type FigureStage } from "@/config/anomalies";
 import { shelfSlots } from "@/game/layout";
 import { seedForNight } from "@/game/rng";
 
@@ -58,10 +58,29 @@ export interface Lights {
   out: boolean;
   /** Elapsed-time when they come back by themselves (while out). */
   restoreAt: number;
-  /** A regular arrives at the till in the dark if the player waits. */
-  thenAtTill: RegularId | null;
   /** The fuse box was used tonight. */
   fuseUsed: boolean;
+}
+
+export interface Peeker {
+  x: number;
+  z: number;
+  hideX: number;
+  hideZ: number;
+  phase: "watching" | "hiding";
+  /** Seconds the player has been looking straight at it. */
+  seenFor: number;
+  /** Elapsed-time it gives up by itself. */
+  until: number;
+  /** Elapsed-time hiding started. */
+  hideStart: number;
+}
+
+/** Where the player is, written by the renderer each frame so the sim can place things relative to them. */
+export interface PlayerPose {
+  x: number;
+  z: number;
+  yaw: number;
 }
 
 export type Ending = "good" | "bad" | "secret" | null;
@@ -120,8 +139,10 @@ export interface Stats {
 export interface GameState {
   /** 1..5 normally; 6 is the bad ending's endless night. */
   night: number;
-  /** Real seconds into the night, 0 ≤ elapsed ≤ TUNING.night.realSeconds. */
+  /** Real seconds into the night, 0 ≤ elapsed ≤ length. */
   elapsed: number;
+  /** Real seconds this night lasts. */
+  length: number;
   status: NightStatus;
   rng: number;
 
@@ -161,6 +182,8 @@ export interface GameState {
   lights: Lights;
   /** The dark figure in the back room, until this elapsed-time. */
   backRoomFigure: number | null;
+  peeker: Peeker | null;
+  player: PlayerPose;
   /** The phone is ringing until this elapsed-time; answered stops it. */
   phone: { until: number; answered: boolean } | null;
   knocked: boolean;
@@ -181,6 +204,7 @@ export function createState(night = 1, strikes = 0): GameState {
   return {
     night,
     elapsed: 0,
+    length: nightSeconds(night, ANOMALIES.filter((a) => a.night === night).length),
     status: "waiting",
     rng: seedForNight(night),
     score: TUNING.score.start,
@@ -207,8 +231,10 @@ export function createState(night = 1, strikes = 0): GameState {
     strikes,
     doorLocked: false,
     figure: null,
-    lights: { out: night > TUNING.night.count, restoreAt: 0, thenAtTill: null, fuseUsed: false },
+    lights: { out: night > TUNING.night.count, restoreAt: 0, fuseUsed: false },
     backRoomFigure: null,
+    peeker: null,
+    player: { x: TUNING.player.spawn.x, z: TUNING.player.spawn.z, yaw: TUNING.player.spawn.yaw },
     phone: null,
     knocked: false,
     keyVisible: false,
@@ -231,8 +257,8 @@ export function startNight(state: GameState): void {
 /** Advance the clock by dt real seconds. Chores are advanced separately in chores.ts. */
 export function tickClock(state: GameState, dt: number): void {
   if (state.status !== "running" || dt <= 0) return;
-  state.elapsed = Math.min(TUNING.night.realSeconds, state.elapsed + dt);
-  if (state.elapsed >= TUNING.night.realSeconds) {
+  state.elapsed = Math.min(state.length, state.elapsed + dt);
+  if (state.elapsed >= state.length) {
     if (state.endless) state.elapsed = 0; // night 6: 06:00 becomes 23:00 again
     else state.status = "over";
   }
@@ -240,7 +266,7 @@ export function tickClock(state: GameState, dt: number): void {
 
 /** 0 at 23:00, 1 at 06:00. */
 export function nightProgress(state: GameState): number {
-  return state.elapsed / TUNING.night.realSeconds;
+  return state.elapsed / state.length;
 }
 
 /** Wall-clock minutes since midnight of the first day (so 06:00 next morning is 1800). */

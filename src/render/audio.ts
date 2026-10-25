@@ -10,6 +10,33 @@ export class GameAudio {
   private breathing: AudioBufferSourceNode | null = null;
 
   readonly ambience = new Ambience();
+  private readonly clips = new Map<string, AudioBuffer>();
+
+  /** Fetch and decode a clip once; later plays are instant. */
+  async loadClip(name: string, url: string): Promise<void> {
+    if (!this.ctx || this.clips.has(name)) return;
+    try {
+      const res = await fetch(url);
+      const buf = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      this.clips.set(name, buf);
+    } catch (err) {
+      console.warn(`clip ${name} failed to load`, err);
+    }
+  }
+
+  /** Play one of the named clips at random. */
+  playClip(names: string[], gain = 1): void {
+    if (!this.ctx) return;
+    const have = names.filter((n) => this.clips.has(n));
+    if (have.length === 0) return;
+    const name = have[Math.floor(Math.random() * have.length)]!;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.clips.get(name)!;
+    const g = this.ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(this.ctx.destination);
+    src.start();
+  }
 
   /** Browsers only allow audio after a user gesture; call this from the start click. */
   unlock(): void {
@@ -269,16 +296,25 @@ export class Ambience {
       o.start();
     }
     this.hum.connect(ctx.destination);
-    // Dread drone: two sines a hair apart so they beat.
+    // Dread drone: beating tones around 80–165 Hz, which laptop speakers can actually play,
+    // with a dull sawtooth underneath for body.
     this.drone = ctx.createGain();
     this.drone.gain.value = 0;
-    for (const f of [41, 41.7, 82.3]) {
+    for (const [f, type, g] of [
+      [82, "sine", 1],
+      [82.9, "sine", 1],
+      [164.4, "sine", 0.45],
+      [41, "sawtooth", 0.25],
+    ] as const) {
       const o = ctx.createOscillator();
-      o.type = "sine";
+      o.type = type;
       o.frequency.value = f;
       const og = ctx.createGain();
-      og.gain.value = f > 60 ? 0.35 : 1;
-      o.connect(og).connect(this.drone);
+      og.gain.value = g;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 400;
+      o.connect(og).connect(lp).connect(this.drone);
       o.start();
     }
     this.drone.connect(ctx.destination);
@@ -300,6 +336,6 @@ export class Ambience {
     this.droneLevel = l;
     const t = this.ctx.currentTime;
     this.drone.gain.cancelScheduledValues(t);
-    this.drone.gain.setTargetAtTime(l * 0.09, t, 1.0);
+    this.drone.gain.setTargetAtTime(l * 0.16, t, 1.0);
   }
 }

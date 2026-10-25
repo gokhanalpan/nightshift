@@ -254,6 +254,14 @@ function moveCustomers(state: GameState, dt: number): void {
       continue;
     }
 
+    // Locked out: anyone still outside turns around.
+    if (cu.phase === "entering" && state.doorLocked && cu.z < C.doorPath.inside.z - 0.6) {
+      cu.phase = "leaving";
+      cu.shelf = null;
+      cu.path = [{ x: C.doorPath.outside.x, z: C.doorPath.outside.z }];
+      continue;
+    }
+
     const target = cu.path[0];
     if (!target) {
       if (cu.phase === "entering") {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ANOMALIES } from "@/config/anomalies";
 import { TUNING, clockToMinutes, type RegularId } from "@/config/tuning";
-import { customerAtTill, greet, performAction, spawnRegular, tick } from "@/game/chores";
+import { greet, performAction, spawnRegular, tick } from "@/game/chores";
 import { noteLines } from "@/game/rules";
 import { clockMinutes, createState, startNight } from "@/game/state";
 
@@ -33,6 +33,18 @@ describe("regulars", () => {
     const seen = new Set<RegularId>(s.visited);
     expect(seen.size).toBe(5);
     expect(s.customers.every((c) => c.onCamera)).toBe(true);
+    expect(s.customers.every((c) => !c.wrong)).toBe(true);
+  });
+
+  it("turn back if the door is locked while they're still outside", () => {
+    const s = running(1);
+    runUntil(s, "23:25");
+    const cu = s.customers.find((c) => c.phase === "entering" && c.z < -4.5);
+    if (cu) {
+      performAction(s, { kind: "door" });
+      tick(s, 0.5);
+      expect(cu.phase).toBe("leaving");
+    }
   });
 
   it("stop coming in while the door is locked", () => {
@@ -57,7 +69,7 @@ describe("the rules note", () => {
 describe("rule 1 — the door", () => {
   it("is broken by leaving the door open past 02:00, and kept by locking in time", () => {
     const open = running(1);
-    runUntil(open, "02:20");
+    runUntil(open, "02:45");
     expect(open.rulesBroken).toContain(1);
 
     const locked = running(1);
@@ -87,21 +99,30 @@ describe("night 1", () => {
   });
 });
 
-describe("night 2", () => {
-  it("hoodie guy comes in off-camera; serving him breaks rule 2", () => {
+describe("night 2 — the peeker", () => {
+  it("appears off to the side, slips away when looked at, and is gone", () => {
     const s = running(2);
-    runUntil(s, "00:41");
-    const ghost = s.customers.find((c) => c.regular === "hoodie" && !c.onCamera);
-    expect(ghost).toBeDefined();
-    // Clear the line so he is the one who reaches the till.
-    for (const c of s.customers) if (c.id !== ghost!.id) c.phase = "gone";
-    ghost!.queueIndex = 0;
-    ghost!.path = ghost!.path.length ? [ghost!.path[0]!] : [];
-    let guard = 0;
-    while (customerAtTill(s)?.id !== ghost!.id && guard++ < 2000) tick(s, 0.25);
-    expect(customerAtTill(s)?.id).toBe(ghost!.id);
-    performAction(s, { kind: "serve", customerId: ghost!.id });
-    expect(s.rulesBroken).toContain(2);
+    s.player = { x: -3.9, z: -1.5, yaw: Math.PI }; // at the till, facing the aisles
+    runUntil(s, "00:51");
+    expect(s.peeker?.phase).toBe("watching");
+    const pk = s.peeker!;
+    // Look straight at it.
+    s.player = { x: -3.9, z: -1.5, yaw: Math.atan2(-(pk.x + 3.9), -(pk.z + 1.5)) };
+    tick(s, 0.2);
+    expect(s.peeker?.phase).toBe("watching");
+    tick(s, 0.2);
+    expect(s.peeker?.phase).toBe("hiding");
+    tick(s, TUNING.peeker.hideSeconds + 0.1);
+    expect(s.peeker).toBeNull();
+  });
+
+  it("gives up by itself if never looked at", () => {
+    const s = running(2);
+    s.player = { x: -3.9, z: -1.5, yaw: 0 }; // facing the door, away from it
+    runUntil(s, "00:51");
+    expect(s.peeker).not.toBeNull();
+    tick(s, 50);
+    expect(s.peeker).toBeNull();
   });
 });
 
@@ -126,19 +147,22 @@ describe("night 3 — lights out", () => {
     expect(s.rulesBroken).toEqual([]);
   });
 
-  it("waiting brings the lights back with the old woman already at the till; greeting her breaks rule 4", () => {
-    const s = running(3);
-    runUntil(s, "02:31");
-    // Clear the till so the test is deterministic about who stands there.
+  it("a greeted repeat breaks rule 4 once the rule is on the note", () => {
+    const s = running(4);
     for (const c of s.customers) c.phase = "gone";
-    tick(s, 46);
-    expect(s.lights.out).toBe(false);
-    const cu = customerAtTill(s);
-    expect(cu?.regular).toBe("oldwoman");
-    expect(cu?.onCamera).toBe(false);
-    expect(cu?.silent).toBe(true);
+    s.visited.push("kid");
+    spawnRegular(s, "kid", { atTill: true, repeat: true });
     greet(s);
     expect(s.rulesBroken).toContain(4);
+  });
+
+  it("waiting brings the lights back by themselves, with something at the end of an aisle", () => {
+    const s = running(3);
+    runUntil(s, "02:31");
+    tick(s, 46);
+    expect(s.lights.out).toBe(false);
+    expect(s.rulesBroken).not.toContain(3);
+    expect(s.peeker?.phase).toBe("watching");
   });
 });
 
@@ -171,23 +195,29 @@ describe("night 5", () => {
     expect(s.ending).toBe("secret");
   });
 
-  it("a rule broken early in the week is a strike, not the end; three strikes is", () => {
+  it("a rule broken early in the week is a strike, not the end; on night 5 it is", () => {
     const one = running(2);
     one.rulesBroken.push(1);
     runUntil(one, "06:00");
     expect(one.ending).toBe("good");
 
-    const three = createState(3, 2);
-    startNight(three);
-    three.rulesBroken.push(2);
-    runUntil(three, "06:00");
-    expect(three.ending).toBe("bad");
+    const many = createState(4, 4);
+    startNight(many);
+    many.rulesBroken.push(2);
+    runUntil(many, "06:00");
+    expect(many.ending).toBe("good");
+
+    const last = createState(5, 0);
+    startNight(last);
+    last.rulesBroken.push(1);
+    runUntil(last, "06:00");
+    expect(last.ending).toBe("bad");
   });
 
   it("leaving after the knock ends the night; a broken rule makes it bad", () => {
     const s = running(5);
     runUntil(s, "05:01");
-    s.rulesBroken.push(2);
+    s.rulesBroken.push(3);
     if (s.doorLocked) performAction(s, { kind: "door" });
     performAction(s, { kind: "leave" });
     expect(s.status).toBe("over");

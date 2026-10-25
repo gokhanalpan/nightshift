@@ -30,7 +30,7 @@ Roughly 12 × 8 m, one room.
 
 ## The shift loop
 
-One night = 10 real minutes. Wall clock runs 23:00 → 06:00.
+One night = 5.5 real minutes + 1 minute per anomaly that night (night 1 is 6.5, night 5 about 13). Wall clock runs 23:00 → 06:00.
 
 Four chores, each a short interaction with a progress bar:
 
@@ -62,20 +62,20 @@ Taped by the till. Three mundane lines on night 1. One line added each morning. 
 
 Night 1 — Normal. One tell: around 03:00 a figure stands at the bus shelter and is gone on the next camera check. Most players won't notice.
 
-Night 2 — Hoodie guy buys and leaves; the camera shows the aisle empty at that moment. The figure is now across the road, closer. A spill appears in the far aisle with nobody near it.
+Night 2 — Something customer-shaped stands at the end of an aisle, watching. Look straight at it and it slips behind the shelves; check the row and there is nothing. The figure is now across the road, closer. A spill appears in the far aisle with nobody near it.
 
-Night 3 — Lights cut around 02:30. Go to the fuse box: something is standing in the back room when the lights return, then it walks out. Wait at the till: lights return by themselves and the old woman is already standing there, silent. First "same customer twice".
+Night 3 — Lights cut around 02:30 (children laughing somewhere in the dark). Go to the fuse box: something is standing in the back room when the lights return, then it walks out. Wait at the till: lights return by themselves and the watcher is at the end of the middle aisle. Regulars can come in twice on a long night; rule 4 is about them.
 
-Night 4 — The phone rings. Picking up plays breathing and the player's own footsteps a second behind. The figure is at the window. Some rule lines are crossed out. Light under the manager door.
+Night 4 — The phone rings. Picking up plays breathing and the player's own footsteps a second behind. The figure is at the window. The watcher twice. Some rule lines are crossed out. Light under the manager door.
 
 Night 5 — Everything, faster. The last rule reads "There is no night 6." Around 05:00, a knock from inside the back room. A key for the manager door appears in the back room.
 
 ## Endings
 
-A rule only counts once it is on the note. Rules broken on nights 1–4 are strikes: the morning still comes, the score drops, and the figure starts one stage closer the next time it appears. Three strikes over the week, or any rule broken on night 5, and there is no morning.
+A rule only counts once it is on the note. Rules broken on nights 1–4 are strikes: the morning still comes, the score drops, the summary says which rule and what it said, and the figure starts one stage closer the next time it appears. Any rule broken on night 5 and there is no morning.
 
 - Good — rules followed, score high: door unlocks at 06:00, sunrise, credits. Last camera frame shows someone sitting at the till.
-- Bad — three strikes, or a rule broken on night 5: the door won't unlock, lights go out, the clock resets to 23:00 and the wall shows NIGHT 6. The rules note is blank. No death screen, no retry; the player can quit from here.
+- Bad — a rule broken on night 5: the door won't unlock, lights go out, the clock resets to 23:00 and the wall shows NIGHT 6. The rules note is blank. No death screen, no retry; the player can quit from here.
 - Secret — manager door opened on night 5: short, ambiguous. Decide later.
 
 ## Anomaly system

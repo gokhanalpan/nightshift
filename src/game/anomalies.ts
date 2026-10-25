@@ -1,7 +1,5 @@
 import { ANOMALIES, type Anomaly, type FigureStage, type Tell } from "@/config/anomalies";
-import { TUNING, clockToMinutes, type RegularId } from "@/config/tuning";
-import { customerAtTill, spawnRegular } from "@/game/chores";
-import { randomInt } from "@/game/rng";
+import { TUNING, clockToMinutes } from "@/config/tuning";
 import { breakRule } from "@/game/rules";
 import { clockMinutes, notify, type GameState } from "@/game/state";
 
@@ -20,7 +18,7 @@ export function tickAnomalies(state: GameState, dt: number): void {
   runLights(state);
   runPhone(state);
   runBackRoomFigure(state);
-  void dt;
+  runPeeker(state, dt);
 }
 
 function perform(state: GameState, a: Anomaly): void {
@@ -33,23 +31,14 @@ function perform(state: GameState, a: Anomaly): void {
       state.figure = { stage: order[idx]!, until: state.elapsed + t.seconds, seenOnCam: false };
       break;
     }
-    case "wrongCustomer": {
-      const regular = t.regular ?? pickRepeat(state);
-      const repeat = t.repeat ?? state.visited.includes(regular);
-      spawnRegular(state, regular, {
-        wrong: true,
-        onCamera: false,
-        silent: t.silent ?? false,
-        repeat,
-        atTill: t.atTill ?? false,
-      });
+    case "peeker":
+      placePeeker(state, t.seconds ?? 45);
       break;
-    }
     case "spill":
       if (!state.spills.some((s) => s.x === t.x && s.z === t.z)) state.spills.push({ id: state.nextId++, x: t.x, z: t.z, age: 0 });
       break;
     case "lightsOut":
-      state.lights = { out: true, restoreAt: state.elapsed + t.seconds, thenAtTill: t.thenAtTill ?? null, fuseUsed: false };
+      state.lights = { out: true, restoreAt: state.elapsed + t.seconds, fuseUsed: false };
       break;
     case "phone":
       state.phone = { until: state.elapsed + t.seconds, answered: false };
@@ -62,13 +51,6 @@ function perform(state: GameState, a: Anomaly): void {
       state.keyVisible = true;
       break;
   }
-}
-
-/** Someone who has already been in tonight; failing that, anyone. */
-function pickRepeat(state: GameState): RegularId {
-  const ids = Object.keys(TUNING.regulars) as RegularId[];
-  const pool = state.visited.length > 0 ? state.visited : ids;
-  return pool[randomInt(state, pool.length)]!;
 }
 
 function runFigure(state: GameState): void {
@@ -84,11 +66,8 @@ function runLights(state: GameState): void {
   if (!l.out || state.endless) return;
   if (state.elapsed >= l.restoreAt) {
     l.out = false;
-    if (l.thenAtTill && !customerAtTill(state)) {
-      // The player waited. Someone is already standing at the till when the lights return.
-      spawnRegular(state, l.thenAtTill, { wrong: true, onCamera: false, silent: true, repeat: true, atTill: true });
-    }
-    l.thenAtTill = null;
+    // The player waited. When the lights return, it is standing at the end of an aisle.
+    placePeeker(state, 40);
   }
 }
 
@@ -98,10 +77,62 @@ export function useFuseBox(state: GameState): void {
   if (!l.out) return;
   l.out = false;
   l.fuseUsed = true;
-  l.thenAtTill = null;
   breakRule(state, 3);
   // Something is standing in the back room when the lights come back, then it walks out.
   state.backRoomFigure = state.elapsed + 4;
+}
+
+// --- The peeker ------------------------------------------------------------------------------
+
+/**
+ * Put it somewhere in the player's field of view but off to the side, far enough away to be
+ * a shape at the end of an aisle rather than a jump scare.
+ */
+export function placePeeker(state: GameState, seconds: number): void {
+  if (state.peeker) return;
+  const P = TUNING.peeker;
+  const { x: px, z: pz, yaw } = state.player;
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  let best: (typeof P.spots)[number] | null = null;
+  let bestScore = -Infinity;
+  for (const sp of P.spots) {
+    const dx = sp.x - px;
+    const dz = sp.z - pz;
+    const dist = Math.hypot(dx, dz);
+    if (dist < P.minDistance) continue;
+    const dot = (dx * fx + dz * fz) / dist;
+    // Best: in view but not centred. Behind the player is fine too, just lower.
+    const score = dot > 0.9 ? -1 : dot > 0.15 ? 2 - Math.abs(dot - 0.55) : dot;
+    if (score > bestScore) {
+      bestScore = score;
+      best = sp;
+    }
+  }
+  if (!best) best = P.spots[0]!;
+  state.peeker = { x: best.x, z: best.z, hideX: best.hideX, hideZ: best.hideZ, phase: "watching", seenFor: 0, until: state.elapsed + seconds, hideStart: 0 };
+}
+
+function runPeeker(state: GameState, dt: number): void {
+  const pk = state.peeker;
+  if (!pk) return;
+  const P = TUNING.peeker;
+  if (pk.phase === "watching") {
+    const { x: px, z: pz, yaw } = state.player;
+    const dx = pk.x - px;
+    const dz = pk.z - pz;
+    const dist = Math.hypot(dx, dz) || 1;
+    const dot = (dx * -Math.sin(yaw) + dz * -Math.cos(yaw)) / dist;
+    pk.seenFor = dot >= P.lookCos ? pk.seenFor + dt : 0;
+    if (pk.seenFor >= P.lookSeconds) {
+      pk.phase = "hiding";
+      pk.hideStart = state.elapsed;
+    } else if (state.elapsed >= pk.until) {
+      state.peeker = null;
+    }
+  } else if (state.elapsed - pk.hideStart >= P.hideSeconds) {
+    state.peeker = null;
+  }
 }
 
 function runBackRoomFigure(state: GameState): void {

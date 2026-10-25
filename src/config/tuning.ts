@@ -9,8 +9,9 @@
 
 export const TUNING = {
   night: {
-    /** One night in real seconds. */
-    realSeconds: 600,
+    /** A night lasts baseSeconds + perAnomalySeconds × (anomalies that night). Night 1 = 6.5 min. */
+    baseSeconds: 330,
+    perAnomalySeconds: 60,
     /** Wall-clock minutes since midnight when the shift starts (23:00). */
     clockStart: 23 * 60,
     /** Wall-clock minutes since midnight when the shift ends (06:00 next morning). */
@@ -198,13 +199,13 @@ export const TUNING = {
     /** Line indexes (0-based) struck through on night 4 and later. */
     crossedOutFrom: { night: 4, lines: [1, 2] },
     /** Minutes of slack around the lock/unlock times before rule 1 counts as broken. */
-    doorGraceMinutes: 12,
+    doorGraceMinutes: 30,
     lockAt: "02:00",
     unlockAt: "05:00",
     /** Score hit when a rule is broken, and the small bonus for greeting a customer promptly. */
     brokenPenalty: 10,
-    /** Rules broken over the week before the morning stops coming. Night 5 allows none. */
-    strikesToLose: 3,
+    /** Rules broken over the week before the morning stops coming. Night 5 allows none; 99 means only night 5 counts. */
+    strikesToLose: 99,
     greetReward: 1,
     greetWindow: 12,
   },
@@ -222,6 +223,23 @@ export const TUNING = {
     /** Where the figure stands in the back room on night 3, and at the till in the final frame. */
     backRoom: { x: 8.4, z: 3.0, yaw: -Math.PI / 2 },
     till: { x: -3.9, z: -1.6, yaw: 0 },
+  },
+
+  /** Where the peeker can stand, and where it slips to when looked at (inside a shelf row). */
+  peeker: {
+    spots: [
+      { x: 0.1, z: 2.1, hideX: 1.6, hideZ: 2.1 },
+      { x: 3.1, z: 2.1, hideX: 4.6, hideZ: 2.1 },
+      { x: -3.6, z: 2.0, hideX: -1.4, hideZ: 2.0 },
+      { x: 5.5, z: 1.4, hideX: 4.6, hideZ: 1.4 },
+      { x: 3.1, z: -0.4, hideX: 1.6, hideZ: -0.4 },
+    ],
+    /** Looking this straight at it (cosine) for this long sends it away. */
+    lookCos: 0.95,
+    lookSeconds: 0.3,
+    hideSeconds: 0.7,
+    minDistance: 2.5,
+    dread: 0.7,
   },
 
   props: {
@@ -269,6 +287,12 @@ export const TUNING = {
 } as const;
 
 export type RegularId = keyof typeof TUNING.regulars;
+
+/** Real seconds in a given night. Longer nights have more going on. */
+export function nightSeconds(night: number, anomalyCount: number): number {
+  void night;
+  return TUNING.night.baseSeconds + TUNING.night.perAnomalySeconds * anomalyCount;
+}
 
 /** "03:00" → minutes since midnight of the first evening (hours before 12 are the next morning). */
 export function clockToMinutes(hhmm: string): number {

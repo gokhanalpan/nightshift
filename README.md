@@ -44,3 +44,4 @@ tests/                 vitest
 ```
 
 Build order: see the end of DESIGN.md. Steps 1–4 are in, plus save/continue and the three endings from step 5.
+Night length = 330 s + 60 s per anomaly that night (night 1 is 6.5 min). Sound clips live in public/sfx/.

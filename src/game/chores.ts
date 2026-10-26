@@ -153,6 +153,10 @@ export interface SpawnOptions {
   repeat?: boolean;
   /** Appear directly at the till instead of walking in. */
   atTill?: boolean;
+  /** The cameras show them this far from where they are. */
+  camOffset?: { x: number; z: number };
+  /** Once served they won't leave. */
+  lingers?: boolean;
 }
 
 /** Put a regular in the store. Normal customers walk in and shop; anomalies use the options. */
@@ -204,6 +208,10 @@ export function spawnRegular(state: GameState, regular: RegularId, opts: SpawnOp
     repeat,
     greeted: false,
     vanishes: wrong,
+    camOffset: opts.camOffset ?? null,
+    lingers: opts.lingers ?? false,
+    lingerStep: 0,
+    lingerAway: 0,
   };
   state.customers.push(cu);
   return cu;
@@ -531,12 +539,23 @@ export function performAction(state: GameState, action: Action): boolean {
     case "serve": {
       const cu = customerAtTill(state);
       if (!cu || cu.id !== action.customerId) return false;
-      if (!cu.onCamera) breakRule(state, 2);
+      if (!cu.onCamera || cu.camOffset) breakRule(state, 2);
       state.stats.served++;
       addScore(state, S.serve.reward);
-      if (cu.onCamera) notify(state, "Served");
+      if (cu.onCamera && !cu.camOffset) notify(state, "Served");
       leave(state, cu);
       if (cu.vanishes) cu.phase = "gone";
+      if (cu.lingers) {
+        // Paid. Doesn't go. Stands where they are with their back to you.
+        cu.phase = "lingering";
+        cu.path = [];
+        cu.lingerStep = 0;
+        cu.lingerAway = 0;
+        const st = TUNING.lingerer.steps[0]!;
+        cu.x = st.x;
+        cu.z = st.z;
+        cu.yaw = Math.PI;
+      }
       return true;
     }
     case "door": {

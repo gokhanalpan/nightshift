@@ -1,14 +1,16 @@
-import { ANOMALIES, type Anomaly, type FigureStage, type Tell } from "@/config/anomalies";
-import { TUNING, clockToMinutes } from "@/config/tuning";
+import { type Anomaly, type FigureStage, type Tell } from "@/config/anomalies";
+import { TUNING, clockToMinutes, type RegularId } from "@/config/tuning";
+import { spawnRegular } from "@/game/chores";
+import { randomInt } from "@/game/rng";
 import { breakRule } from "@/game/rules";
-import { clockMinutes, notify, type GameState } from "@/game/state";
+import { anomaliesFor, clockMinutes, notify, type GameState } from "@/game/state";
 
 /** Fire every anomaly for tonight whose time has come, and run the ones that last. */
 export function tickAnomalies(state: GameState, dt: number): void {
   if (state.status !== "running" || state.endless) return;
   const now = clockMinutes(state);
-  for (const a of ANOMALIES) {
-    if (a.night !== state.night || state.anomaliesFired.includes(a.id)) continue;
+  for (const a of anomaliesFor(state)) {
+    if (state.anomaliesFired.includes(a.id)) continue;
     if (now >= clockToMinutes(a.at)) {
       state.anomaliesFired.push(a.id);
       perform(state, a);
@@ -19,6 +21,20 @@ export function tickAnomalies(state: GameState, dt: number): void {
   runPhone(state);
   runBackRoomFigure(state);
   runPeeker(state, dt);
+  runHanging(state, dt);
+  runLingerers(state, dt);
+  runCart(state, dt);
+  runClockLie(state);
+  runLightFollow(state, dt);
+}
+
+/** A regular who isn't in the store right now. */
+function pickFreeRegular(state: GameState): RegularId | null {
+  const ids = Object.keys(TUNING.regulars) as RegularId[];
+  const inStore = new Set(state.customers.filter((c) => c.phase !== "leaving" && c.phase !== "gone").map((c) => c.regular));
+  const free = ids.filter((id) => !inStore.has(id));
+  if (free.length === 0) return null;
+  return free[randomInt(state, free.length)]!;
 }
 
 function perform(state: GameState, a: Anomaly): void {
@@ -34,6 +50,9 @@ function perform(state: GameState, a: Anomaly): void {
     case "peeker":
       placePeeker(state, t.seconds ?? 45);
       break;
+    case "hanging":
+      placeHanging(state, t.seconds ?? 90, t.rush ?? false, t.tiltAfter, t.flickerAfter);
+      break;
     case "spill":
       if (!state.spills.some((s) => s.x === t.x && s.z === t.z)) state.spills.push({ id: state.nextId++, x: t.x, z: t.z, age: 0 });
       break;
@@ -41,7 +60,37 @@ function perform(state: GameState, a: Anomaly): void {
       state.lights = { out: true, restoreAt: state.elapsed + t.seconds, fuseUsed: false };
       break;
     case "phone":
-      state.phone = { until: state.elapsed + t.seconds, answered: false };
+      state.phone = { until: state.elapsed + t.seconds, answered: false, second: false, answeredAt: 0 };
+      break;
+    case "secondPhone":
+      state.phone = { until: state.elapsed + (t.seconds ?? 40), answered: false, second: true, answeredAt: 0 };
+      break;
+    case "wrongCustomer": {
+      const regular = t.regular ?? pickFreeRegular(state);
+      if (!regular) break;
+      // Their camera image stands one aisle over: toward +X if they're on the left, else toward -X.
+      const off = TUNING.wrongCustomerOffset;
+      const cu = spawnRegular(state, regular, {});
+      cu.camOffset = { x: off, z: 0 };
+      cu.wrong = true; // the feeds jitter faintly while they're in
+      break;
+    }
+    case "lingerer": {
+      const regular = t.regular ?? pickFreeRegular(state);
+      if (!regular) break;
+      spawnRegular(state, regular, { lingers: true });
+      break;
+    }
+    case "cart": {
+      const st = TUNING.cart.stations[0]!;
+      state.cart = { stage: 0, x: st.x, z: st.z, awayFor: 0, until: state.elapsed + (t.seconds ?? 70), besideAt: null };
+      break;
+    }
+    case "clockLie":
+      state.clockLie = { until: state.elapsed + (t.seconds ?? 45), minutes: t.minutes ?? 13 };
+      break;
+    case "lightFollow":
+      state.lightFollow = { t: 0, until: state.elapsed + (t.seconds ?? 90) };
       break;
     case "knock":
       state.knocked = true;
@@ -135,6 +184,177 @@ function runPeeker(state: GameState, dt: number): void {
   }
 }
 
+// --- The hanging man -------------------------------------------------------------------------
+
+export function placeHanging(state: GameState, seconds: number, rush: boolean, tiltAfter?: number, flickerAfter?: number): void {
+  if (state.hanging) return;
+  const H = TUNING.hanging;
+  const { x: px, z: pz, yaw } = state.player;
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  // Prefer somewhere in front of the player but not centred, and not too close.
+  let best: { x: number; z: number } = H.spots[0]!;
+  let bestScore = -Infinity;
+  for (const sp of H.spots) {
+    const dx = sp.x - px;
+    const dz = sp.z - pz;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 3) continue;
+    const dot = (dx * fx + dz * fz) / dist;
+    const score = dot > 0.85 ? 0 : dot > 0.1 ? 2 - Math.abs(dot - 0.5) : dot;
+    if (score > bestScore) {
+      bestScore = score;
+      best = sp;
+    }
+  }
+  state.hanging = {
+    x: best.x,
+    z: best.z,
+    until: state.elapsed + seconds,
+    lookedFor: 0,
+    stage: "still",
+    stageT: 0,
+    lookedAway: false,
+    rush,
+    rushTo: null,
+    tiltAfter: tiltAfter ?? H.tiltAfter,
+    flickerAfter: flickerAfter ?? H.flickerAfter,
+  };
+}
+
+/** Cosine between the player's view and the man. */
+function lookDot(state: GameState, x: number, z: number): { dot: number; dist: number } {
+  const { x: px, z: pz, yaw } = state.player;
+  const dx = x - px;
+  const dz = z - pz;
+  const dist = Math.hypot(dx, dz) || 1;
+  return { dot: (dx * -Math.sin(yaw) + dz * -Math.cos(yaw)) / dist, dist };
+}
+
+function runHanging(state: GameState, dt: number): void {
+  const h = state.hanging;
+  if (!h) return;
+  const H = TUNING.hanging;
+  const { dot, dist } = lookDot(state, h.x, h.z);
+  const looking = dot >= H.lookCos && dist <= H.maxDistance;
+  h.stageT += dt;
+  if (looking && h.stage !== "out" && h.stage !== "rush") h.lookedFor += dt;
+
+  switch (h.stage) {
+    case "still":
+      if (h.lookedFor >= h.tiltAfter) {
+        h.stage = "tilt";
+        h.stageT = 0;
+      }
+      break;
+    case "tilt":
+      if (h.lookedFor >= h.flickerAfter) {
+        h.stage = "out";
+        h.stageT = 0;
+      }
+      break;
+    case "out":
+      if (h.stageT >= H.outSeconds) {
+        h.stage = "changed";
+        h.stageT = 0;
+      }
+      break;
+    case "changed":
+      if (dot < H.lookAwayCos) h.lookedAway = true;
+      if (h.lookedAway && looking) {
+        if (h.rush) {
+          h.stage = "rush";
+          h.stageT = 0;
+          h.rushTo = { x: state.player.x, z: state.player.z };
+        } else {
+          state.hanging = null; // look away, look back: gone
+          return;
+        }
+      }
+      break;
+    case "rush":
+      if (h.stageT >= H.rushSeconds) {
+        state.hanging = null;
+        return;
+      }
+      break;
+  }
+  if (state.elapsed >= h.until && h.stage !== "rush") state.hanging = null;
+}
+
+// --- The customer who doesn't leave ----------------------------------------------------------
+
+function runLingerers(state: GameState, dt: number): void {
+  const L = TUNING.lingerer;
+  for (const cu of state.customers) {
+    if (cu.phase !== "lingering") continue;
+    const { dot } = lookDot(state, cu.x, cu.z);
+    if (dot < L.lookAwayCos) cu.lingerAway += dt;
+    else cu.lingerAway = 0;
+    if (cu.lingerAway >= L.awaySeconds) {
+      cu.lingerAway = 0;
+      cu.lingerStep++;
+      const st = L.steps[cu.lingerStep];
+      if (!st) {
+        cu.phase = "gone";
+        continue;
+      }
+      cu.x = st.x;
+      cu.z = st.z;
+    }
+    // Back to the player, always.
+    cu.yaw = Math.atan2(-(state.player.x - cu.x), -(state.player.z - cu.z));
+  }
+}
+
+// --- The cart --------------------------------------------------------------------------------
+
+function runCart(state: GameState, dt: number): void {
+  const c = state.cart;
+  if (!c) return;
+  const C = TUNING.cart;
+  if (c.besideAt !== null) {
+    if (state.elapsed - c.besideAt >= C.besideSeconds) state.cart = null;
+    return;
+  }
+  const { dot } = lookDot(state, c.x, c.z);
+  if (dot < C.lookAwayCos) c.awayFor += dt;
+  else if (c.awayFor >= C.awaySeconds) {
+    // Looked away long enough, now looking back: it has moved.
+    c.awayFor = 0;
+    c.stage++;
+    const st = C.stations[c.stage];
+    if (st) {
+      c.x = st.x;
+      c.z = st.z;
+    } else {
+      // Beside the player, on their right.
+      const yaw = state.player.yaw;
+      c.x = state.player.x + Math.cos(yaw) * C.besideOffset;
+      c.z = state.player.z - Math.sin(yaw) * C.besideOffset;
+      c.besideAt = state.elapsed;
+    }
+  } else {
+    c.awayFor = 0;
+  }
+  if (state.elapsed >= c.until) state.cart = null;
+}
+
+// --- The clock that lies ---------------------------------------------------------------------
+
+function runClockLie(state: GameState): void {
+  if (state.clockLie && state.elapsed >= state.clockLie.until) state.clockLie = null;
+}
+
+// --- The light that follows ------------------------------------------------------------------
+
+function runLightFollow(state: GameState, dt: number): void {
+  const l = state.lightFollow;
+  if (!l) return;
+  l.t += dt;
+  if (state.elapsed >= l.until) state.lightFollow = null;
+}
+
 function runBackRoomFigure(state: GameState): void {
   if (state.backRoomFigure !== null && state.elapsed >= state.backRoomFigure) state.backRoomFigure = null;
 }
@@ -149,7 +369,8 @@ function runPhone(state: GameState): void {
 export function answerPhone(state: GameState): void {
   if (!state.phone || state.phone.answered) return;
   state.phone.answered = true;
-  state.phone.until = state.elapsed + 10;
+  state.phone.answeredAt = state.elapsed;
+  state.phone.until = state.elapsed + (state.phone.second ? 22 : 10);
   breakRule(state, 5);
 }
 

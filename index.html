@@ -95,6 +95,10 @@
       #overlay-end #end-rules ul { list-style: none; margin: 8px 0; padding: 0; color: var(--paper); }
       #overlay-end #end-rules li { margin: 3px 0; }
 
+      /* Dev panel (?dev): state at a glance and a log of what fired. */
+      #dev { position: fixed; right: 12px; bottom: 36px; width: 300px; padding: 8px 10px; background: rgba(5, 5, 7, 0.78); color: #cfc9b8; font: 12px/1.45 monospace; white-space: pre-wrap; z-index: 15; pointer-events: none; border: 1px solid #333; }
+      #dev[hidden] { display: none; }
+      #dev .hot { color: #ffb347; }
       #err { position: fixed; left: 12px; right: 12px; bottom: 36px; padding: 10px 12px; background: #5a1a1a; color: #ffd9d9; font: 13px/1.4 monospace; white-space: pre-wrap; z-index: 20; }
       #err[hidden] { display: none; }
       #fps { position: fixed; left: 22px; bottom: 16px; font-size: 12px; color: #4a4740; pointer-events: none; }
@@ -162,6 +166,7 @@
     </div>
 
     <div id="fps"></div>
+    <div id="dev" hidden></div>
     <div id="err" hidden></div>
 
     <script type="module" src="/src/main.ts"></script>

@@ -11,6 +11,8 @@ export class GameAudio {
 
   readonly ambience = new Ambience();
   private readonly clips = new Map<string, AudioBuffer>();
+  /** Called with the name of every sound played; the dev panel listens. */
+  onPlay: ((name: string) => void) | null = null;
 
   /** Fetch and decode a clip once; later plays are instant. */
   async loadClip(name: string, url: string): Promise<void> {
@@ -30,6 +32,7 @@ export class GameAudio {
     const have = names.filter((n) => this.clips.has(n));
     if (have.length === 0) return;
     const name = have[Math.floor(Math.random() * have.length)]!;
+    this.onPlay?.(`clip ${name}`);
     const src = this.ctx.createBufferSource();
     src.buffer = this.clips.get(name)!;
     const g = this.ctx.createGain();
@@ -48,6 +51,7 @@ export class GameAudio {
   /** Something is suddenly there: a low hit with a sour overtone sliding down. */
   stinger(gain = 1): void {
     if (!this.ctx) return;
+    this.onPlay?.("stinger");
     const ctx = this.ctx;
     const t = ctx.currentTime;
     this.tone(55, t, 1.4, 0.25 * gain, "sine");
@@ -70,6 +74,7 @@ export class GameAudio {
   /** A burst of static, for switching feeds. */
   static(gain = 1, len = 0.12): void {
     if (!this.ctx || !this.noiseBuffer()) return;
+    this.onPlay?.("static");
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -85,9 +90,55 @@ export class GameAudio {
     src.stop(t + len + 0.02);
   }
 
+  /** A cart wheel: a short dry squeak. */
+  squeak(gain = 1): void {
+    if (!this.ctx) return;
+    this.onPlay?.("squeak");
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(2200, t);
+    osc.frequency.exponentialRampToValueAtTime(1500, t + 0.18);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1900;
+    bp.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.06 * gain, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    osc.connect(bp).connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.25);
+  }
+
+  /** A rope taking weight: a slow, low creak. */
+  creak(gain = 1): void {
+    if (!this.ctx || !this.noiseBuffer()) return;
+    this.onPlay?.("creak");
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 12;
+    bp.frequency.setValueAtTime(180, t);
+    bp.frequency.exponentialRampToValueAtTime(90, t + 1.2);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35 * gain, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+    src.connect(bp).connect(g).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 1.4);
+  }
+
   /** Fluorescent tube stuttering. */
   buzz(gain = 1): void {
     if (!this.ctx) return;
+    this.onPlay?.("buzz");
     const t = this.ctx.currentTime;
     for (let i = 0; i < 4; i++) {
       this.tone(120 + i * 7, t + i * 0.045 + Math.random() * 0.02, 0.05, 0.05 * gain, "square");
@@ -97,6 +148,7 @@ export class GameAudio {
   /** Two short tones, like a monitor asking for attention. */
   ping(gain = 1): void {
     if (!this.ctx) return;
+    this.onPlay?.("ping");
     const t = this.ctx.currentTime;
     this.tone(880, t, 0.08, 0.05 * gain, "square");
     this.tone(1175, t + 0.12, 0.1, 0.05 * gain, "square");
@@ -105,6 +157,7 @@ export class GameAudio {
   /** Door chime: two bright notes. */
   chime(gain = 1): void {
     if (!this.ctx) return;
+    this.onPlay?.("chime");
     const t = this.ctx.currentTime;
     this.tone(1318, t, 0.35, 0.06 * gain, "sine");
     this.tone(1046, t + 0.18, 0.5, 0.06 * gain, "sine");
@@ -113,6 +166,7 @@ export class GameAudio {
   /** One footstep: a soft filtered thud. */
   step(gain = 1): void {
     if (!this.ctx || !this.noiseBuffer()) return;
+    this.onPlay?.("step");
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -132,6 +186,7 @@ export class GameAudio {
   /** A lock turning. */
   click(gain = 1): void {
     if (!this.ctx || !this.noiseBuffer()) return;
+    this.onPlay?.("click");
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -151,36 +206,39 @@ export class GameAudio {
   /** The lights going out: a deep thunk and the hum dropping away. */
   thunk(gain = 1): void {
     if (!this.ctx) return;
+    this.onPlay?.("thunk");
     const t = this.ctx.currentTime;
     this.tone(70, t, 0.5, 0.2 * gain, "sine");
     this.tone(52, t + 0.05, 0.7, 0.15 * gain, "triangle");
   }
 
-  /** Three knocks on wood. */
-  knock(gain = 1): void {
+  /** Three knocks on wood. `heavy` makes them slower, deeper and much louder. */
+  knock(gain = 1, heavy = false, count = 3): void {
     if (!this.ctx || !this.noiseBuffer()) return;
+    this.onPlay?.(heavy ? "knock (heavy)" : count === 1 ? "knock (one)" : "knock");
     const ctx = this.ctx;
-    for (let i = 0; i < 3; i++) {
-      const t = ctx.currentTime + i * 0.55;
+    for (let i = 0; i < count; i++) {
+      const t = ctx.currentTime + i * (heavy ? 0.7 : 0.55);
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       const filter = ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.value = 500;
+      filter.frequency.value = heavy ? 260 : 500;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.5 * gain, t + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      g.gain.exponentialRampToValueAtTime((heavy ? 1.6 : 0.5) * gain, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (heavy ? 0.3 : 0.16));
       src.connect(filter).connect(g).connect(ctx.destination);
       src.start(t);
-      src.stop(t + 0.2);
-      this.tone(140, t, 0.12, 0.25 * gain, "sine");
+      src.stop(t + 0.35);
+      this.tone(heavy ? 70 : 140, t, heavy ? 0.3 : 0.12, (heavy ? 0.6 : 0.25) * gain, "sine");
     }
   }
 
   /** Start the phone ringing (two bursts a second, pause, repeat) until stopRing. */
   startRing(gain = 1): void {
     if (!this.ctx || this.ringTimer !== null) return;
+    this.onPlay?.("phone ring");
     const burst = () => {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
@@ -203,6 +261,7 @@ export class GameAudio {
   /** Breathing on the line, and footsteps that follow the player's a beat behind. */
   startBreathing(gain = 1): void {
     if (!this.ctx || !this.noiseBuffer() || this.breathing) return;
+    this.onPlay?.("breathing");
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;

@@ -78,6 +78,15 @@ A rule only counts once it is on the note. Rules broken on nights 1–4 are stri
 - Bad — a rule broken on night 5: the door won't unlock, lights go out, the clock resets to 23:00 and the wall shows NIGHT 6. The rules note is blank. No death screen, no retry; the player can quit from here.
 - Secret — manager door opened on night 5: short, ambiguous. Decide later.
 
+## More anomalies (added after the launch list)
+
+- The wrong customer — a regular whose image on the cameras stands one aisle over from where they are. Serving them breaks rule 2. Nights 2 and 4.
+- The customer who doesn't leave — pays, then stands at the counter with their back to you; a step closer round the counter each time you look away for five seconds; gone after the third. Night 2.
+- The cart — an empty cart at the far end of an aisle, closer each time you look away and back, beside you on the last; a squeak each move. Night 2.
+- The clock that lies — the wall clock runs 13 minutes ahead of the real time for 45 s, the 02:00 chime plays twice, and the note's first line reads different times. Night 3, just before the real 02:00.
+- The second call — the phone again on night 5; answer it and after five seconds of silence you hear your own footsteps from a moment ago, then three knocks on the line; when it goes quiet, one knock from the real back-room door.
+- The light that follows — one ceiling panel lights wherever you are and everything else is dark; after 20 s it lags behind you, after 40 s it lights where you were, at 60 s it stops where you stood and the back-room doorway is lit (and occupied, if the week has gone badly). Night 5.
+
 ## Anomaly system
 
 Each anomaly is a data entry:

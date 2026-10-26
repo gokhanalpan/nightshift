@@ -52,12 +52,12 @@ describe("night clock", () => {
 
 describe("debug options", () => {
   it("defaults to night 1 at normal speed", () => {
-    expect(readDebugOptions("")).toEqual({ night: 1, timeScale: 1 });
+    expect(readDebugOptions("")).toEqual({ night: 1, timeScale: 1, dev: false, test: false });
   });
 
   it("reads ?night and ?speed and clamps nonsense", () => {
-    expect(readDebugOptions("?night=4&speed=10")).toEqual({ night: 4, timeScale: 10 });
-    expect(readDebugOptions("?night=99")).toEqual({ night: TUNING.night.count + 1, timeScale: 1 });
-    expect(readDebugOptions("?night=abc&speed=-3")).toEqual({ night: 1, timeScale: 1 });
+    expect(readDebugOptions("?night=4&speed=10&dev")).toEqual({ night: 4, timeScale: 10, dev: true, test: false });
+    expect(readDebugOptions("?night=99")).toEqual({ night: TUNING.night.count + 1, timeScale: 1, dev: false, test: false });
+    expect(readDebugOptions("?test&speed=-3")).toEqual({ night: 1, timeScale: 1, dev: false, test: true });
   });
 });

@@ -1,5 +1,5 @@
 import { TUNING, nightSeconds, type RegularId } from "@/config/tuning";
-import { ANOMALIES, type FigureStage } from "@/config/anomalies";
+import { ANOMALIES, TEST_NIGHT, type Anomaly, type FigureStage } from "@/config/anomalies";
 import { shelfSlots } from "@/game/layout";
 import { seedForNight } from "@/game/rng";
 
@@ -10,7 +10,7 @@ import { seedForNight } from "@/game/rng";
 export type NightStatus = "waiting" | "running" | "over";
 
 /** entering: walking to a shelf · browsing: standing at it · toQueue: walking to the till · queued · leaving · gone */
-export type CustomerPhase = "entering" | "browsing" | "toQueue" | "queued" | "leaving" | "gone";
+export type CustomerPhase = "entering" | "browsing" | "toQueue" | "queued" | "leaving" | "lingering" | "gone";
 
 export interface Customer {
   id: number;
@@ -44,6 +44,32 @@ export interface Customer {
   greeted: boolean;
   /** Leaves without walking: just gone. */
   vanishes: boolean;
+  /** The cameras show them this far from where they are (the wrong customer). */
+  camOffset: { x: number; z: number } | null;
+  /** Once served they don't leave; this counts their unseen moves. */
+  lingers: boolean;
+  lingerStep: number;
+  lingerAway: number;
+}
+
+export interface Cart {
+  stage: number;
+  x: number;
+  z: number;
+  awayFor: number;
+  until: number;
+  /** Elapsed-time it arrived beside the player. */
+  besideAt: number | null;
+}
+
+export interface ClockLie {
+  until: number;
+  minutes: number;
+}
+
+export interface LightFollow {
+  t: number;
+  until: number;
 }
 
 export interface FigureState {
@@ -74,6 +100,26 @@ export interface Peeker {
   until: number;
   /** Elapsed-time hiding started. */
   hideStart: number;
+}
+
+export type HangingStage = "still" | "tilt" | "out" | "changed" | "rush";
+
+export interface Hanging {
+  x: number;
+  z: number;
+  until: number;
+  /** Seconds the player has spent looking straight at him, in total. */
+  lookedFor: number;
+  stage: HangingStage;
+  /** Seconds in the current stage. */
+  stageT: number;
+  /** After the change, the player looked away at least once. */
+  lookedAway: boolean;
+  /** This one comes for the player instead of disappearing. */
+  rush: boolean;
+  rushTo: { x: number; z: number } | null;
+  tiltAfter: number;
+  flickerAfter: number;
 }
 
 /** Where the player is, written by the renderer each frame so the sim can place things relative to them. */
@@ -183,9 +229,13 @@ export interface GameState {
   /** The dark figure in the back room, until this elapsed-time. */
   backRoomFigure: number | null;
   peeker: Peeker | null;
+  hanging: Hanging | null;
   player: PlayerPose;
-  /** The phone is ringing until this elapsed-time; answered stops it. */
-  phone: { until: number; answered: boolean } | null;
+  /** The phone is ringing until this elapsed-time; answered stops it. The second call is different. */
+  phone: { until: number; answered: boolean; second: boolean; answeredAt: number } | null;
+  cart: Cart | null;
+  clockLie: ClockLie | null;
+  lightFollow: LightFollow | null;
   knocked: boolean;
   keyVisible: boolean;
   hasKey: boolean;
@@ -195,16 +245,23 @@ export interface GameState {
   ending: Ending;
   /** Night 6: nothing happens, nothing ends. */
   endless: boolean;
+  /** The test night: every anomaly kind in one night (?test). */
+  testNight: boolean;
 }
 
-export function createState(night = 1, strikes = 0): GameState {
+/** The anomaly list this state plays from. */
+export function anomaliesFor(state: Pick<GameState, "night" | "testNight">): Anomaly[] {
+  return state.testNight ? TEST_NIGHT : ANOMALIES.filter((a) => a.night === state.night);
+}
+
+export function createState(night = 1, strikes = 0, testNight = false): GameState {
   const slots: Record<string, SlotState> = {};
   for (const s of shelfSlots()) slots[s.id] = { filled: true, emptySince: 0 };
   const c = TUNING.chores;
   return {
     night,
     elapsed: 0,
-    length: nightSeconds(night, ANOMALIES.filter((a) => a.night === night).length),
+    length: nightSeconds(night, anomaliesFor({ night, testNight }).length),
     status: "waiting",
     rng: seedForNight(night),
     score: TUNING.score.start,
@@ -234,8 +291,12 @@ export function createState(night = 1, strikes = 0): GameState {
     lights: { out: night > TUNING.night.count, restoreAt: 0, fuseUsed: false },
     backRoomFigure: null,
     peeker: null,
+    hanging: null,
     player: { x: TUNING.player.spawn.x, z: TUNING.player.spawn.z, yaw: TUNING.player.spawn.yaw },
     phone: null,
+    cart: null,
+    clockLie: null,
+    lightFollow: null,
     knocked: false,
     keyVisible: false,
     hasKey: false,
@@ -243,6 +304,7 @@ export function createState(night = 1, strikes = 0): GameState {
     reading: false,
     ending: null,
     endless: night > TUNING.night.count,
+    testNight,
   };
 }
 

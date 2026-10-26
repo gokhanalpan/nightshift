@@ -105,6 +105,10 @@ function normalizeSnapshot(snap: GameState): GameState {
       repeat: c.repeat ?? false,
       greeted: c.greeted ?? false,
       vanishes: c.vanishes ?? false,
+      camOffset: c.camOffset ?? null,
+      lingers: c.lingers ?? false,
+      lingerStep: c.lingerStep ?? 0,
+      lingerAway: c.lingerAway ?? 0,
     }));
   return {
     ...fresh,
@@ -121,9 +125,14 @@ function normalizeSnapshot(snap: GameState): GameState {
     lights: { ...fresh.lights, ...(snap.lights ?? {}) },
     player: { ...fresh.player, ...(snap.player ?? {}) },
     peeker: snap.peeker ?? null,
+    hanging: null,
+    cart: null,
+    clockLie: null,
+    lightFollow: null,
     viewingFeed: null,
     action: null,
     reading: false,
+    testNight: false,
   };
 }
 

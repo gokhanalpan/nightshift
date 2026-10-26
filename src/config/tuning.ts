@@ -242,6 +242,76 @@ export const TUNING = {
     dread: 0.7,
   },
 
+  /** The hanging man: where he can hang, and how long the player has to look before each stage. */
+  hanging: {
+    spots: [
+      { x: 0.1, z: 1.6 },
+      { x: 3.1, z: 1.6 },
+      { x: -3.6, z: 1.4 },
+      { x: 1.6, z: -2.0 },
+    ],
+    height: 0.5,
+    lookCos: 0.9,
+    lookAwayCos: 0.55,
+    maxDistance: 10,
+    /** Seconds of looking before his head tilts, and before the tube flickers out. */
+    tiltAfter: 3,
+    flickerAfter: 8,
+    tiltSeconds: 2.5,
+    tiltRadians: 0.16,
+    /** The tube is out for this long; afterwards he hangs this much lower. */
+    outSeconds: 0.6,
+    drop: 0.35,
+    rushSeconds: 0.45,
+    dread: 1.0,
+  },
+
+  /** The customer who doesn't leave: where they stand after each unseen move, then gone. Facing away. */
+  lingerer: {
+    steps: [
+      { x: -3.0, z: -3.45 },
+      { x: -2.1, z: -3.1 },
+      { x: -2.0, z: -2.2 },
+    ],
+    /** Seconds the player must be looking away before each move. */
+    awaySeconds: 5,
+    lookAwayCos: 0.3,
+  },
+
+  /** The cart: aisle stations from the far end to beside the player. */
+  cart: {
+    stations: [
+      { x: 3.1, z: 2.2 },
+      { x: 3.1, z: 0.9 },
+      { x: 3.1, z: -0.8 },
+    ],
+    /** Last station: this far to the player's right. */
+    besideOffset: 0.9,
+    awaySeconds: 1.2,
+    lookAwayCos: 0.3,
+    /** Seconds it stays beside the player before it's gone. */
+    besideSeconds: 4,
+  },
+
+  /** The clock that lies: what the note says instead of its first line while it's lying. */
+  clockLie: {
+    line: 0,
+    text: "Lock the door at 02:13, unlock at 04:47.",
+  },
+
+  /** The light that follows: phase boundaries in seconds. */
+  lightFollow: {
+    lagAt: 20,
+    behindAt: 40,
+    stopAt: 60,
+    offAt: 75,
+    lagSeconds: 2.5,
+    behindSeconds: 6,
+  },
+
+  /** How far one aisle over is, for the wrong customer's camera image. */
+  wrongCustomerOffset: 3.0,
+
   props: {
     phone: { x: -2.6, y: 1.12, z: -2.6 },
     fuseBox: { x: 10.2, y: 1.5, z: 2.4 },
@@ -306,6 +376,10 @@ export interface DebugOptions {
   night: number;
   /** Multiply the speed of the clock (10 = a night in one minute). */
   timeScale: number;
+  /** Show the dev panel: what's happening and what just played. */
+  dev: boolean;
+  /** The test night: every anomaly kind in one night. */
+  test: boolean;
 }
 
 export function readDebugOptions(search: string): DebugOptions {
@@ -315,6 +389,8 @@ export function readDebugOptions(search: string): DebugOptions {
   return {
     night,
     timeScale: Number.isFinite(timeScale) && timeScale > 0 ? timeScale : 1,
+    dev: params.has("dev"),
+    test: params.has("test"),
   };
 }
 

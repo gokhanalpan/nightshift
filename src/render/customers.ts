@@ -10,6 +10,8 @@ import type { Customer, GameState } from "@/game/state";
 export class Customers {
   readonly group = new THREE.Group();
   private readonly figures = new Map<number, THREE.Group>();
+  /** For a customer with a camera offset: a second body the feeds see, where the cameras think they are. */
+  private readonly camFigures = new Map<number, THREE.Group>();
 
   sync(state: GameState, time: number): void {
     const seen = new Set<number>();
@@ -17,25 +19,40 @@ export class Customers {
       seen.add(cu.id);
       let fig = this.figures.get(cu.id);
       if (!fig) {
-        fig = buildRegular(cu.regular, cu.wrong);
-        if (!cu.onCamera) fig.traverse((o) => o.layers.set(1));
+        fig = buildRegular(cu.regular, false);
+        if (!cu.onCamera || cu.camOffset) fig.traverse((o) => o.layers.set(1)); // player only
         this.figures.set(cu.id, fig);
         this.group.add(fig);
+        if (cu.camOffset) {
+          const cam = buildRegular(cu.regular, false);
+          cam.traverse((o) => o.layers.set(2)); // cameras only
+          this.camFigures.set(cu.id, cam);
+          this.group.add(cam);
+        }
       }
-      fig.position.set(cu.x, 0, cu.z);
-      fig.rotation.y = cu.yaw;
       const walking = cu.phase === "entering" || cu.phase === "toQueue" || cu.phase === "leaving";
       const rate = 9 * (TUNING.regulars[cu.regular].walkSpeed / 1.2);
       const swing = walking ? Math.sin(time * rate) * 0.45 : 0;
-      (fig.getObjectByName("legL") as THREE.Mesh).rotation.x = swing;
-      (fig.getObjectByName("legR") as THREE.Mesh).rotation.x = -swing;
-      // Wrong ones don't bob. They just stand.
-      fig.position.y = walking ? Math.abs(Math.sin(time * rate)) * 0.03 : cu.wrong ? 0 : Math.sin(time * 1.5 + cu.id) * 0.01;
+      const bob = walking ? Math.abs(Math.sin(time * rate)) * 0.03 : cu.phase === "lingering" ? 0 : Math.sin(time * 1.5 + cu.id) * 0.01;
+      const pose = (g: THREE.Group, x: number, z: number) => {
+        g.position.set(x, bob, z);
+        g.rotation.y = cu.yaw;
+        (g.getObjectByName("legL") as THREE.Mesh).rotation.x = swing;
+        (g.getObjectByName("legR") as THREE.Mesh).rotation.x = -swing;
+      };
+      pose(fig, cu.x, cu.z);
+      const cam = this.camFigures.get(cu.id);
+      if (cam && cu.camOffset) pose(cam, cu.x + cu.camOffset.x, cu.z + cu.camOffset.z);
     }
     for (const [id, fig] of this.figures) {
       if (!seen.has(id)) {
         this.group.remove(fig);
         this.figures.delete(id);
+        const cam = this.camFigures.get(id);
+        if (cam) {
+          this.group.remove(cam);
+          this.camFigures.delete(id);
+        }
       }
     }
   }
@@ -108,6 +125,35 @@ function body(look: Look, dim: boolean): { g: THREE.Group; legH: number; torsoH:
   return { g, legH, torsoH, headS };
 }
 
+/** A wire shopping cart. Its handle is at -Z, so the pusher stands behind it. */
+export function buildCart(dim: boolean): THREE.Group {
+  const cart = new THREE.Group();
+  const wire = mat(0x8a8f96, dim);
+  const basket = new THREE.Mesh(
+    new THREE.BoxGeometry(0.4, 0.45, 0.55),
+    new THREE.MeshLambertMaterial({ color: new THREE.Color(0x8a8f96).multiplyScalar(dim ? 0.55 : 1), transparent: true, opacity: 0.55 }),
+  );
+  basket.position.y = 0.55;
+  cart.add(basket);
+  for (const [x, z] of [
+    [-0.17, -0.22],
+    [0.17, -0.22],
+    [-0.17, 0.22],
+    [0.17, 0.22],
+  ] as const) {
+    const wheel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.1), mat(0x222222, dim));
+    wheel.position.set(x, 0.05, z);
+    cart.add(wheel);
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.03), wire);
+    strut.position.set(x, 0.2, z);
+    cart.add(strut);
+  }
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.03), mat(0xc24a3c, dim));
+  handle.position.set(0, 0.9, -0.3);
+  cart.add(handle);
+  return cart;
+}
+
 export function buildRegular(id: RegularId, dim: boolean): THREE.Group {
   const height = TUNING.regulars[id].height;
   switch (id) {
@@ -130,28 +176,8 @@ export function buildRegular(id: RegularId, dim: boolean): THREE.Group {
       g.add(scarf);
       (g.getObjectByName("torso") as THREE.Mesh).rotation.x = 0.12;
       // The cart, pushed in front.
-      const cart = new THREE.Group();
+      const cart = buildCart(dim);
       cart.position.set(0, 0, 0.5);
-      const wire = mat(0x8a8f96, dim);
-      const basket = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.45, 0.55), new THREE.MeshLambertMaterial({ color: new THREE.Color(0x8a8f96).multiplyScalar(dim ? 0.55 : 1), transparent: true, opacity: 0.55 }));
-      basket.position.y = 0.55;
-      cart.add(basket);
-      for (const [x, z] of [
-        [-0.17, -0.22],
-        [0.17, -0.22],
-        [-0.17, 0.22],
-        [0.17, 0.22],
-      ] as const) {
-        const wheel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.1), mat(0x222222, dim));
-        wheel.position.set(x, 0.05, z);
-        cart.add(wheel);
-        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.03), wire);
-        strut.position.set(x, 0.2, z);
-        cart.add(strut);
-      }
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.03), mat(0xc24a3c, dim));
-      handle.position.set(0, 0.9, -0.3);
-      cart.add(handle);
       g.add(cart);
       return g;
     }

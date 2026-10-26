@@ -24,6 +24,9 @@ Test switches on the URL:
 
 - `?night=3` — start on night 3 (bypasses the save, nothing is written)
 - `?speed=20` — run the clock 20× (a whole night in 30 s)
+- `?dev` — dev panel: state, next anomaly, what's active, and a log of anomalies and sounds as they fire
+- `?night=6` — the endless night
+- `?test` — a test night with one of every anomaly kind, evenly spaced, all rules on the note (combine: `?test&speed=4&dev`)
 
 ## Layout
 
